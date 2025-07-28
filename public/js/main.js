@@ -10,6 +10,9 @@ const epicHeader = document.getElementById('epic-header');
 const epicTitle = document.getElementById('epic-title');
 const epicSummary = document.getElementById('epic-summary');
 const resetViewBtn = document.getElementById('reset-view-btn');
+const showGraphBtn = document.getElementById('show-graph-btn');
+const showGanttBtn = document.getElementById('show-gantt-btn');
+const ganttContainer = document.getElementById('gantt-container');
 
 
 // --- Global Variables ---
@@ -73,13 +76,48 @@ resetViewBtn.addEventListener('click', () => {
     }
 });
 
-
 window.addEventListener('resize', () => {
     if (currentGraphData) {
         renderGraph(currentGraphData);
     }
 });
 
+showGraphBtn.addEventListener('click', () => {
+    setActiveView('graph');
+});
+
+showGanttBtn.addEventListener('click', () => {
+    setActiveView('gantt');
+    if (currentGraphData) {
+        renderGanttChart(currentGraphData);
+    }
+});
+
+/**
+ * Manages the active view (graph or gantt) and button styles.
+ * @param {'graph' | 'gantt'} activeView - The view to make active.
+ */
+function setActiveView(activeView) {
+    if (activeView === 'graph') {
+        ganttContainer.classList.add('hidden');
+        graphContainer.classList.remove('hidden');
+        // Style graph button as active
+        showGraphBtn.classList.remove('bg-white', 'text-gray-900', 'border-gray-200');
+        showGraphBtn.classList.add('bg-indigo-600', 'text-white', 'border-indigo-600');
+        // Style gantt button as inactive
+        showGanttBtn.classList.remove('bg-indigo-600', 'text-white', 'border-indigo-600');
+        showGanttBtn.classList.add('bg-white', 'text-gray-900', 'border-gray-200');
+    } else if (activeView === 'gantt') {
+        graphContainer.classList.add('hidden');
+        ganttContainer.classList.remove('hidden');
+        // Style gantt button as active
+        showGanttBtn.classList.remove('bg-white', 'text-gray-900', 'border-gray-200');
+        showGanttBtn.classList.add('bg-indigo-600', 'text-white', 'border-indigo-600');
+        // Style graph button as inactive
+        showGraphBtn.classList.remove('bg-indigo-600', 'text-white', 'border-indigo-600');
+        showGraphBtn.classList.add('bg-white', 'text-gray-900', 'border-gray-200');
+    }
+}
 
 // --- JIRA & D3 LOGIC ---
 
@@ -117,6 +155,7 @@ async function fetchDataAndRender() {
         currentGraphData = graph;
 
         if (graph.nodes.length > 0) {
+            setActiveView('graph')
             renderGraph(graph);
             resetViewBtn.classList.remove('hidden');
         } else {
@@ -354,4 +393,184 @@ function drag(simulation) {
         d.fy = null;
     }
     return d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended);
+}
+
+/**
+ * Calculates the dependency level for each task using topological sort.
+ * Returns a map of nodeId -> level.
+ */
+function calculateTaskLevels(nodes, links) {
+    const levels = new Map();
+    const inDegree = new Map(nodes.map(n => [n.id, 0]));
+    const adj = new Map(nodes.map(n => [n.id, []]));
+
+    // Build the graph representation
+    links.forEach(link => {
+        if (link.type.toLowerCase().trim() === 'blocks') {
+            const source = link.source.id || link.source;
+            const target = link.target.id || link.target;
+            adj.get(source).push(target);
+            inDegree.set(target, (inDegree.get(target) || 0) + 1);
+        }
+    });
+
+    // Find all starting nodes (in-degree is 0)
+    const queue = [];
+    for (const [nodeId, degree] of inDegree.entries()) {
+        if (degree === 0) {
+            queue.push(nodeId);
+            levels.set(nodeId, 0);
+        }
+    }
+
+    let head = 0;
+    while (head < queue.length) {
+        const u = queue[head++];
+        const currentLevel = levels.get(u);
+
+        for (const v of (adj.get(u) || [])) {
+            inDegree.set(v, inDegree.get(v) - 1);
+            // Set the level of the dependent task to be one greater
+            levels.set(v, Math.max(levels.get(v) || 0, currentLevel + 1));
+            if (inDegree.get(v) === 0) {
+                queue.push(v);
+            }
+        }
+    }
+    return levels;
+}
+
+/**
+ * Calculates the start and end times for each task based on dependencies.
+ */
+function calculateTaskTimes(nodes, links) {
+    // A map to store the start, end, and duration for each task
+    const times = new Map(nodes.map(n => [n.id, {
+        start: 0,
+        end: 0,
+        duration: Math.max(1, n.storyPoints || 1) // Duration is based on story points
+    }]));
+
+    // Maps to build a graph representation for sorting
+    const inDegree = new Map(nodes.map(n => [n.id, 0]));
+    const adj = new Map(nodes.map(n => [n.id, []]));
+
+    // Build the graph from "Blocks" links
+    links.forEach(link => {
+        if (link.type.toLowerCase().trim() === 'blocks') {
+            const source = link.source.id || link.source; // The task that blocks
+            const target = link.target.id || link.target; // The task that is blocked
+            adj.get(source).push(target);
+            inDegree.set(target, (inDegree.get(target) || 0) + 1);
+        }
+    });
+
+    // Find all starting tasks (those with no prerequisites)
+    const queue = nodes.filter(n => inDegree.get(n.id) === 0).map(n => n.id);
+
+    // Process the queue
+    let head = 0;
+    while (head < queue.length) {
+        const u_id = queue[head++];
+        const u_task = times.get(u_id);
+
+        // This task's end time is its start time plus its duration
+        u_task.end = u_task.start + u_task.duration;
+
+        // For every task that this one blocks...
+        for (const v_id of (adj.get(u_id) || [])) {
+            const v_task = times.get(v_id);
+            // ...its start time must be at least the end time of the current task
+            v_task.start = Math.max(v_task.start, u_task.end);
+
+            inDegree.set(v_id, inDegree.get(v_id) - 1);
+            if (inDegree.get(v_id) === 0) {
+                queue.push(v_id);
+            }
+        }
+    }
+    return times;
+}
+
+/**
+ * Renders a Gantt chart based on calculated task start/end times.
+ */
+function renderGanttChart(data) {
+    ganttContainer.innerHTML = '';
+    const taskTimes = calculateTaskTimes(data.nodes, data.links);
+    
+    // Find the total duration of the project to set the scale
+    let maxTime = 0;
+    for (const task of taskTimes.values()) {
+        if (task.end > maxTime) maxTime = task.end;
+    }
+    const scaleEnd = maxTime;
+
+    // Sort the tasks by their start time
+    const ganttRows = data.nodes
+        .sort((a, b) => (taskTimes.get(a.id)?.start || 0) - (taskTimes.get(b.id)?.start || 0))
+        .map(node => {
+            const times = taskTimes.get(node.id);
+            if (!times || !scaleEnd) return '';
+
+            // Calculate the position and width using the accurate timeline scale
+            const leftPercent = (times.start / scaleEnd) * 100;
+            const widthPercent = (times.duration / scaleEnd) * 100;
+        
+            return `
+                <div class="flex items-center p-2 border-b border-gray-200 text-sm">
+                    <div class="w-1/3 truncate" title="${node.summary}">
+                        <span class="font-mono text-xs text-gray-500">${node.id}</span>
+                        <span class="ml-2">${node.summary}</span>
+                    </div>
+                    <div class="w-2/3 relative h-6 bg-gray-200 rounded">
+                        <div class="absolute h-6 rounded text-white text-xs flex items-center justify-center overflow-hidden" 
+                             title="${node.storyPoints || 1} points"
+                             style="background-color: ${statusColors[node.statusCategory] || statusColors.default}; 
+                                    left: ${leftPercent}%; 
+                                    width: ${widthPercent}%;">
+                             <span class="px-1">${node.storyPoints || 'n/a'}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+    }).join('');
+
+    // --- HEADER LOGIC ---
+    let headerLevels = '';
+    if (scaleEnd > 0) {
+        // Determine a smart tick increment to avoid clutter
+        let increment = 1;
+        if (scaleEnd > 50) {
+            increment = 10;
+        } else if (scaleEnd > 20) {
+            increment = 5;
+        } else if (scaleEnd > 10) {
+            increment = 2;
+        }
+
+        // Create a tick mark at each increment
+        for (let i = increment; i <= scaleEnd; i += increment) {
+            const position = (i / scaleEnd) * 100;
+            headerLevels += `
+                <div class="absolute h-full top-0" style="left: ${position}%;">
+                    <div class="w-px h-2 bg-gray-300"></div>
+                    <div class="absolute -top-4 text-xs text-gray-500" style="transform: translateX(-50%);">${i}</div>
+                </div>
+            `;
+        }
+    }
+
+    ganttContainer.innerHTML = `
+        <div class="p-4">
+            <div class="flex items-center border-b-2 pb-2 mb-4">
+                <div class="w-1/3 font-bold">Task</div>
+                <div class="w-2/3 relative h-1">
+                    <div class="absolute -top-4 left-0 text-xs text-gray-500">0</div>
+                    ${headerLevels}
+                </div>
+            </div>
+            ${ganttRows}
+        </div>
+    `;
 }
