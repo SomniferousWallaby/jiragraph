@@ -18,6 +18,8 @@ const showGanttBtn = document.getElementById('show-gantt-btn');
 let JIRA_URL, EMAIL, API_TOKEN, EPIC_KEY;
 let currentGraphData = null;
 let selectedNodeId = null;
+let simulation = null; // Make simulation globally accessible
+let zoom = null; // Make zoom behavior globally accessible
 
 // --- STATUS COLOR MAPPING ---
 const statusColors = {
@@ -64,15 +66,22 @@ visualizeBtn.addEventListener('click', () => {
 });
 
 resetViewBtn.addEventListener('click', () => {
-    if (currentGraphData) {
+    // Check that the zoom behavior has been initialized
+    if (currentGraphData && zoom) {
         const svg = d3.select("#graph-svg");
-        svg.transition().duration(750).call(
-            d3.zoom().transform,
-            d3.zoomIdentity
-        );
-        setTimeout(() => {
-             renderGraph(currentGraphData);
-        }, 750);
+        const container = svg.select("g"); // Select the container group that holds the graph
+
+        // 1. Visually transition the container back to the identity transform.
+        if (!container.empty()) {
+            container.transition().duration(750).attr('transform', d3.zoomIdentity);
+        }
+
+        // 2. Immediately update the zoom behavior's internal state to match.
+        svg.call(zoom.transform, d3.zoomIdentity);
+
+        if (simulation) {
+            simulation.alpha(0.3).restart();
+        }
     }
 });
 
@@ -442,6 +451,7 @@ function renderGanttChart(data) {
  * Renders the D3 graph view.
  */
 function renderGraph(graph) {
+    let node; // Declare node selection here to be accessible in click handlers
     const width = graphContainer.clientWidth;
     const height = graphContainer.clientHeight;
     const svg = d3.select("#graph-svg").attr("viewBox", [0, 0, width, height]);
@@ -455,9 +465,17 @@ function renderGraph(graph) {
         .style("pointer-events", "all") // catch mouse events
         .on("click", () => {
             updateIssueDetails(null); // Deselect
-            // Re-render the graph to show the deselected state
-            // This is simpler than trying to manually update all styles
-            renderGraph(currentGraphData);
+
+            // Update styles on the existing nodes without re-rendering the whole graph.
+            // This prevents the simulation from restarting and nodes from "flying away".
+            if (node) {
+                node.selectAll("circle")
+                    .attr("stroke", n => n.id === selectedNodeId ? "#3B82F6" : (!blockedNodeIds.has(n.id) ? '#22C55E' : '#E5E7EB'))
+                    .attr("stroke-width", n => (n.id === selectedNodeId || !blockedNodeIds.has(n.id)) ? 3 : 1.5);
+
+                node.selectAll("text")
+                    .classed("node-label-selected", n => n.id === selectedNodeId);
+            }
         });
 
     const container = svg.append("g");
@@ -477,7 +495,8 @@ function renderGraph(graph) {
         .attr("d", "M0,-5L10,0L0,5")
         .attr("fill", "#EF4444");
 
-    const simulation = d3.forceSimulation(graph.nodes)
+    // Assign to the global simulation variable instead of a local const
+    simulation = d3.forceSimulation(graph.nodes)
         .force("link", d3.forceLink(graph.links).id(d => d.id).distance(100))
         .force("charge", d3.forceManyBody().strength(-50))
         .force("center", d3.forceCenter(width / 2, height / 2))
@@ -517,7 +536,7 @@ function renderGraph(graph) {
             .map(link => link.target.id || link.target)
     );
 
-    const node = container.append("g").attr("class", "nodes").selectAll("g")
+    node = container.append("g").attr("class", "nodes").selectAll("g")
         .data(graph.nodes).join("g").call(drag(simulation));
 
     node.append("circle")
@@ -576,7 +595,8 @@ function renderGraph(graph) {
         });
     });
 
-    const zoom = d3.zoom().scaleExtent([0.1, 4]).on("zoom", (event) => {
+    // Assign to the global zoom variable instead of a local const
+    zoom = d3.zoom().scaleExtent([0.1, 4]).on("zoom", (event) => {
         container.attr('transform', event.transform);
     });
     svg.call(zoom);
