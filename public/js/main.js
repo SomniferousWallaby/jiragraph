@@ -80,7 +80,7 @@ resetViewBtn.addEventListener('click', () => {
         svg.call(zoom.transform, d3.zoomIdentity);
 
         if (simulation) {
-            simulation.alpha(0.3).restart();
+            simulation.alpha(0.2).restart();
         }
     }
 });
@@ -94,7 +94,7 @@ window.addEventListener('resize', () => {
 showGraphBtn.addEventListener('click', () => {
     setActiveView('graph');
     if (currentGraphData) {
-        renderGraph(currentGraphData);
+        updateGraphSelection();
     }
 });
 
@@ -446,6 +446,35 @@ function renderGanttChart(data) {
     }
 }
 
+/**
+ * Updates the styles of the graph (selection, etc.) without re-rendering
+ * the entire simulation. This is used when switching back to the graph view.
+ */
+function updateGraphSelection() {
+    if (!currentGraphData) return;
+
+    const svg = d3.select("#graph-svg");
+    const node = svg.selectAll(".nodes g"); // Re-select the nodes based on the class we assigned
+    
+    if (node.empty()) return; // Graph hasn't been rendered yet, nothing to update.
+
+    // We need to recalculate this as it's not stored globally.
+    const blockedNodeIds = new Set(
+        currentGraphData.links
+            .filter(link => link.isBlocking)
+            .map(link => link.target.id || link.target)
+    );
+
+    // Update circle styles
+    node.selectAll("circle")
+        .attr("stroke", n => n.id === selectedNodeId ? "#3B82F6" : (!blockedNodeIds.has(n.id) ? '#22C55E' : '#E5E7EB'))
+        .attr("stroke-width", n => (n.id === selectedNodeId || !blockedNodeIds.has(n.id)) ? 3 : 1.5);
+
+    // Update text styles
+    node.selectAll("text")
+        .classed("node-label-selected", n => n.id === selectedNodeId);
+}
+
 
 /**
  * Renders the D3 graph view.
@@ -465,9 +494,6 @@ function renderGraph(graph) {
         .style("pointer-events", "all") // catch mouse events
         .on("click", () => {
             updateIssueDetails(null); // Deselect
-
-            // Update styles on the existing nodes without re-rendering the whole graph.
-            // This prevents the simulation from restarting and nodes from "flying away".
             if (node) {
                 node.selectAll("circle")
                     .attr("stroke", n => n.id === selectedNodeId ? "#3B82F6" : (!blockedNodeIds.has(n.id) ? '#22C55E' : '#E5E7EB'))
