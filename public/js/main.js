@@ -479,7 +479,7 @@ function renderGraph(graph) {
 
     const simulation = d3.forceSimulation(graph.nodes)
         .force("link", d3.forceLink(graph.links).id(d => d.id).distance(100))
-        .force("charge", d3.forceManyBody().strength(-25))
+        .force("charge", d3.forceManyBody().strength(-50))
         .force("center", d3.forceCenter(width / 2, height / 2))
         .force("collide", d3.forceCollide().radius(d => radiusScale(d.storyPoints) + 5));
 
