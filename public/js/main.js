@@ -446,7 +446,7 @@ function renderGraph(graph) {
         .attr("fill", "#EF4444");
 
     const simulation = d3.forceSimulation(graph.nodes)
-        .force("link", d3.forceLink(graph.links).id(d => d.id).distance(150))
+        .force("link", d3.forceLink(graph.links).id(d => d.id).distance(100))
         .force("charge", d3.forceManyBody().strength(-50))
         .force("center", d3.forceCenter(width / 2, height / 2))
         .force("collide", d3.forceCollide().radius(d => radiusScale(d.storyPoints) + 5));
@@ -495,15 +495,26 @@ function renderGraph(graph) {
         .attr("stroke-width", d => !blockedNodeIds.has(d.id) ? 3 : 1.5)
         .on("click", (event, d) => {
             updateIssueDetails(d);
+
+            // By using D3's data-binding, we can update all nodes at once
+            // without relying on DOM traversal like `parentNode`. This is more robust.
+
+            // Update circle styles based on data
             node.selectAll("circle")
-                .attr("stroke", n => !blockedNodeIds.has(n.id) ? '#22C55E' : '#E5E7EB')
-                .attr("stroke-width", n => !blockedNodeIds.has(n.id) ? 3 : 1.5);
-            d3.select(event.currentTarget).attr("stroke", "#3B82F6").attr("stroke-width", 3);
+                .attr("stroke", n => n.id === d.id ? "#3B82F6" : (!blockedNodeIds.has(n.id) ? '#22C55E' : '#E5E7EB'))
+                .attr("stroke-width", n => (n.id === d.id || !blockedNodeIds.has(n.id)) ? 3 : 1.5);
+
+            // Update text styles based on data
+            node.selectAll("text")
+                .style("font-weight", n => n.id === d.id ? "bold" : "normal");
         });
 
     node.append("text")
         .text(d => d.id)
-        .attr("y", d => radiusScale(d.storyPoints) + 10);
+        .attr("y", d => radiusScale(d.storyPoints) + 12) // Position below circle
+        .attr("text-anchor", "middle")
+        .style("font-size", "10px")
+        .style("pointer-events", "none"); // Prevent text from capturing mouse events
 
     simulation.on("tick", () => {
         link.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
