@@ -4,6 +4,7 @@
 const visualizeBtn = document.getElementById('visualize-btn');
 const loader = document.getElementById('loader');
 const graphContainer = document.getElementById('graph-container');
+const ganttContainer = document.getElementById('gantt-container');
 const placeholder = document.getElementById('placeholder');
 const issueDetailsPanel = document.getElementById('issue-details');
 const epicHeader = document.getElementById('epic-header');
@@ -12,8 +13,6 @@ const epicSummary = document.getElementById('epic-summary');
 const resetViewBtn = document.getElementById('reset-view-btn');
 const showGraphBtn = document.getElementById('show-graph-btn');
 const showGanttBtn = document.getElementById('show-gantt-btn');
-const ganttContainer = document.getElementById('gantt-container');
-
 
 // --- Global Variables ---
 let JIRA_URL, EMAIL, API_TOKEN, EPIC_KEY;
@@ -67,7 +66,7 @@ resetViewBtn.addEventListener('click', () => {
     if (currentGraphData) {
         const svg = d3.select("#graph-svg");
         svg.transition().duration(750).call(
-            d3.zoom().transform, 
+            d3.zoom().transform,
             d3.zoomIdentity
         );
         setTimeout(() => {
@@ -98,26 +97,34 @@ showGanttBtn.addEventListener('click', () => {
  * @param {'graph' | 'gantt'} activeView - The view to make active.
  */
 function setActiveView(activeView) {
+    const ganttHeaderContainer = document.getElementById('gantt-header');
+    const ganttRowsContainer = document.getElementById('gantt-rows');
+
     if (activeView === 'graph') {
         ganttContainer.classList.add('hidden');
+        if (ganttHeaderContainer) ganttHeaderContainer.innerHTML = '';
+        if (ganttRowsContainer) ganttRowsContainer.innerHTML = '';
+        
         graphContainer.classList.remove('hidden');
-        // Style graph button as active
-        showGraphBtn.classList.remove('bg-white', 'text-gray-900', 'border-gray-200');
+        
+        showGraphBtn.classList.remove('bg-white', 'text-gray-900', 'border-gray-200', 'focus:ring-0');
         showGraphBtn.classList.add('bg-indigo-600', 'text-white', 'border-indigo-600');
-        // Style gantt button as inactive
+        
         showGanttBtn.classList.remove('bg-indigo-600', 'text-white', 'border-indigo-600');
-        showGanttBtn.classList.add('bg-white', 'text-gray-900', 'border-gray-200');
+        showGanttBtn.classList.add('bg-white', 'text-gray-900', 'border-gray-200', 'focus:ring-0');
+
     } else if (activeView === 'gantt') {
         graphContainer.classList.add('hidden');
         ganttContainer.classList.remove('hidden');
-        // Style gantt button as active
-        showGanttBtn.classList.remove('bg-white', 'text-gray-900', 'border-gray-200');
+        
+        showGanttBtn.classList.remove('bg-white', 'text-gray-900', 'border-gray-200', 'focus:ring-0');
         showGanttBtn.classList.add('bg-indigo-600', 'text-white', 'border-indigo-600');
-        // Style graph button as inactive
+
         showGraphBtn.classList.remove('bg-indigo-600', 'text-white', 'border-indigo-600');
-        showGraphBtn.classList.add('bg-white', 'text-gray-900', 'border-gray-200');
+        showGraphBtn.classList.add('bg-white', 'text-gray-900', 'border-gray-200', 'focus:ring-0');
     }
 }
+
 
 // --- JIRA & D3 LOGIC ---
 
@@ -128,6 +135,12 @@ async function fetchDataAndRender() {
     epicHeader.classList.add('hidden');
     resetViewBtn.classList.add('hidden');
     d3.select("#graph-svg").selectAll("*").remove();
+    
+    const ganttHeaderContainer = document.getElementById('gantt-header');
+    const ganttRowsContainer = document.getElementById('gantt-rows');
+    if(ganttHeaderContainer) ganttHeaderContainer.innerHTML = '';
+    if(ganttRowsContainer) ganttRowsContainer.innerHTML = '';
+
 
     try {
         const response = await fetch('/api/jira', {
@@ -142,7 +155,6 @@ async function fetchDataAndRender() {
         }
 
         const responseData = await response.json();
-
         const { epic, nodes, links } = processJiraData(responseData.issues, responseData.storyPointFieldId);
 
         if (epic) {
@@ -155,29 +167,26 @@ async function fetchDataAndRender() {
         currentGraphData = graph;
 
         if (graph.nodes.length > 0) {
-            setActiveView('graph')
+            setActiveView('graph');
             renderGraph(graph);
             resetViewBtn.classList.remove('hidden');
         } else {
             placeholder.innerHTML = `<p class="text-xl font-medium text-red-500">No child issues found for Epic ${EPIC_KEY}.</p>`;
             placeholder.classList.remove('hidden');
-            epicHeader.classList.add('hidden');
-            currentGraphData = null;
         }
 
     } catch (error) {
         console.error('Error fetching from Jira:', error);
         placeholder.innerHTML = `<p class="text-xl font-medium text-red-500">Failed to fetch data.</p><p class="mt-2 text-sm">${error.message}</p>`;
         placeholder.classList.remove('hidden');
-        currentGraphData = null;
     } finally {
         loader.classList.add('hidden');
     }
 }
 
-
 /**
- * Processes Jira issue links to prevent duplicates.
+ * Processes Jira issue links to correctly handle all link types
+ * and add an `isBlocking` flag for use in both views.
  */
 function processJiraData(issues, storyPointFieldId) {
     const epicIssue = issues.find(issue => issue.key === EPIC_KEY);
@@ -194,21 +203,54 @@ function processJiraData(issues, storyPointFieldId) {
     }));
 
     const links = [];
+    const processedLinks = new Set(); // Use a set to track processed pairs and prevent duplicates
+
     childIssues.forEach(issue => {
         if (issue.fields.issuelinks) {
             issue.fields.issuelinks.forEach(link => {
-                // We only process OUTWARD links to ensure each relationship is created only once.
+                let sourceId, targetId, linkType;
+                let isBlocking = false;
+
+                // Case 1: The current issue is the source of an outward link
                 if (link.outwardIssue) {
-                    // Check that the linked issue is actually one of the nodes in our graph.
-                    const targetExists = nodes.some(n => n.id === link.outwardIssue.key);
-                    if (targetExists) {
-                        links.push({
-                            source: issue.key,
-                            target: link.outwardIssue.key,
-                            type: link.type.outward // e.g., "Blocks"
-                        });
+                    sourceId = issue.key;
+                    targetId = link.outwardIssue.key;
+                    linkType = link.type.outward;
+                    if (link.type.outward.toLowerCase().trim() === 'blocks') {
+                        isBlocking = true;
                     }
+                } 
+                // Case 2: The current issue is the target of an inward link
+                else if (link.inwardIssue) {
+                    sourceId = link.inwardIssue.key;
+                    targetId = issue.key;
+                    linkType = link.type.outward; // Always use the outward description for consistency
+                    if (link.type.inward.toLowerCase().trim() === 'is blocked by') {
+                        isBlocking = true;
+                    }
+                } else {
+                    return; // Skip if link is malformed
                 }
+
+                // Create a canonical key by sorting the IDs to handle duplicates
+                const canonicalKey = [sourceId, targetId].sort().join('--');
+                if (processedLinks.has(canonicalKey)) {
+                    return; // We've already processed this relationship from the other issue
+                }
+
+                // Ensure both linked issues are part of this epic's children.
+                if (!nodes.some(n => n.id === sourceId) || !nodes.some(n => n.id === targetId)) {
+                    return;
+                }
+
+                processedLinks.add(canonicalKey);
+                
+                links.push({
+                    source: sourceId,
+                    target: targetId,
+                    type: linkType, 
+                    isBlocking: isBlocking
+                });
             });
         }
     });
@@ -216,11 +258,170 @@ function processJiraData(issues, storyPointFieldId) {
     return {
         epic: epicIssue ? { id: epicIssue.key, summary: epicIssue.fields.summary } : null,
         nodes,
-        links: links
+        links
     };
 }
 
+/**
+ * Calculates the start/end times and dependency graph structure for the Gantt chart.
+ */
+function calculateTaskTimes(nodes, links) {
+    const blockingLinks = links.filter(link => link.isBlocking); // Use only blocking links for Gantt
 
+    const times = new Map(nodes.map(n => [n.id, {
+        start: 0,
+        end: 0,
+        duration: Math.max(1, n.storyPoints || 1)
+    }]));
+
+    const inDegree = new Map(nodes.map(n => [n.id, 0]));
+    const adj = new Map(nodes.map(n => [n.id, []]));
+
+    blockingLinks.forEach(link => {
+        const source = link.source.id || link.source;
+        const target = link.target.id || link.target;
+        adj.get(source).push(target);
+        inDegree.set(target, (inDegree.get(target) || 0) + 1);
+    });
+
+    const inDegreeForSort = new Map(inDegree);
+
+    const queue = nodes
+        .filter(n => inDegreeForSort.get(n.id) === 0)
+        .map(n => n.id)
+        .sort((a,b) => a.localeCompare(b, undefined, {numeric: true}));
+
+    let head = 0;
+    while (head < queue.length) {
+        const u_id = queue[head++];
+
+        const u_task = times.get(u_id);
+        u_task.end = u_task.start + u_task.duration;
+
+        const neighbors = (adj.get(u_id) || []).sort((a,b) => a.localeCompare(b, undefined, {numeric: true}));
+
+        for (const v_id of neighbors) {
+            const v_task = times.get(v_id);
+            v_task.start = Math.max(v_task.start, u_task.end);
+            inDegreeForSort.set(v_id, inDegreeForSort.get(v_id) - 1);
+            if (inDegreeForSort.get(v_id) === 0) {
+                queue.push(v_id);
+            }
+        }
+    }
+    return { times, adj, inDegree };
+}
+
+
+/**
+ * Renders a Gantt chart with rows ordered by dependency trees.
+ */
+function renderGanttChart(data) {
+    const ganttHeaderContainer = document.getElementById('gantt-header');
+    const ganttRowsContainer = document.getElementById('gantt-rows');
+    ganttHeaderContainer.innerHTML = '';
+    ganttRowsContainer.innerHTML = '';
+
+    const { times: taskTimes, adj, inDegree } = calculateTaskTimes(data.nodes, data.links);
+    
+    let maxTime = 0;
+    for (const task of taskTimes.values()) {
+        if (task.end > maxTime) maxTime = task.end;
+    }
+    const scaleEnd = maxTime;
+
+    // Create a map for quick node lookup by ID
+    const sortedNodes = [];
+    const visited = new Set();
+    const nodeMap = new Map(data.nodes.map(n => [n.id, n]));
+
+    // Use the topologically sorted order from calculateTaskTimes
+    function dfs(nodeId) {
+        if (visited.has(nodeId)) return;
+        visited.add(nodeId);
+        const node = nodeMap.get(nodeId);
+        if (node) sortedNodes.push(node);
+        
+        // Sort neighbors for a deterministic order within the tree
+        const neighbors = (adj.get(nodeId) || []).sort((a,b) => a.localeCompare(b, undefined, {numeric: true}));
+        for (const neighborId of neighbors) {
+            dfs(neighborId);
+        }
+    }
+
+    // Find root nodes (those with no incoming dependencies) and start DFS from them.
+    const rootNodes = data.nodes
+        .filter(n => inDegree.get(n.id) === 0)
+        .sort((a,b) => a.id.localeCompare(b.id, undefined, {numeric: true}));
+    
+    rootNodes.forEach(root => dfs(root.id));
+
+    // Handle nodes that might be in cycles or disconnected from the main roots
+    data.nodes.forEach(node => {
+        if (!visited.has(node.id)) {
+            dfs(node.id);
+        }
+    });
+
+    const ganttRowsHTML = sortedNodes.map(node => {
+        const times = taskTimes.get(node.id);
+        if (!times || !scaleEnd) return '';
+        const leftPercent = (times.start / scaleEnd) * 100;
+        const widthPercent = (times.duration / scaleEnd) * 100;
+        return `
+            <div data-node-id="${node.id}" class="flex items-center p-2 border-b border-gray-200 text-sm cursor-pointer hover:bg-gray-100 rounded-lg">
+                <div class="w-1/3 truncate" title="${node.summary}">
+                    <span class="font-mono text-xs text-gray-500">${node.id}</span>
+                    <span class="ml-2">${node.summary}</span>
+                </div>
+                <div class="w-2/3 relative h-6 bg-gray-200 rounded">
+                    <div class="absolute h-6 rounded text-white text-xs flex items-center justify-center overflow-hidden" 
+                         title="${node.storyPoints || 1} points"
+                         style="background-color: ${statusColors[node.statusCategory] || statusColors.default}; left: ${leftPercent}%; width: ${widthPercent}%;">
+                         <span class="px-1">${node.storyPoints || 'n/a'}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    ganttRowsContainer.innerHTML = ganttRowsHTML;
+
+    // Render the timeline header
+    let headerLevelsHTML = '';
+    if (scaleEnd > 0) {
+        let increment = 1;
+        if (scaleEnd > 50) increment = 10;
+        else if (scaleEnd > 20) increment = 5;
+        else if (scaleEnd > 10) increment = 2;
+        for (let i = increment; i <= scaleEnd; i += increment) {
+            const position = (i / scaleEnd) * 100;
+            headerLevelsHTML += `<div class="absolute h-full top-0" style="left: ${position}%;"><div class="w-px h-2 bg-gray-300"></div><div class="absolute -top-4 text-xs text-gray-500" style="transform: translateX(-50%);">${i}</div></div>`;
+        }
+    }
+    ganttHeaderContainer.innerHTML = `<div class="flex items-center border-b-2 pb-2 mb-4"><div class="w-1/3 font-bold">Task</div><div class="w-2/3 relative h-1"><div class="absolute -top-4 left-0 text-xs text-gray-500">0</div>${headerLevelsHTML}</div></div>`;
+
+    // Add click listeners to the rows
+    ganttRowsContainer.querySelectorAll('[data-node-id]').forEach(row => {
+        const nodeId = row.dataset.nodeId;
+        const nodeData = data.nodes.find(n => n.id === nodeId);
+        if (nodeData) {
+            row.addEventListener('click', () => {
+                updateIssueDetails(nodeData);
+                ganttRowsContainer.querySelectorAll('[data-node-id]').forEach(r => {
+                    r.classList.remove('bg-indigo-100', 'hover:bg-indigo-100');
+                    r.classList.add('hover:bg-gray-100');
+                });
+                row.classList.add('bg-indigo-100', 'hover:bg-indigo-100');
+                row.classList.remove('hover:bg-gray-100');
+            });
+        }
+    });
+}
+
+
+/**
+ * Renders the D3 graph view.
+ */
 function renderGraph(graph) {
     const width = graphContainer.clientWidth;
     const height = graphContainer.clientHeight;
@@ -230,13 +431,10 @@ function renderGraph(graph) {
     const container = svg.append("g");
 
     const maxStoryPoints = d3.max(graph.nodes, d => d.storyPoints) || 1;
-    const radiusScale = d3.scaleSqrt()
-        .domain([0, maxStoryPoints])
-        .range([8, 25]);
+    const radiusScale = d3.scaleSqrt().domain([0, maxStoryPoints]).range([8, 25]);
 
-    // Specific marker for blocking relationships.
     container.append("defs").append("marker")
-        .attr("id", "arrow-blocking") 
+        .attr("id", "arrow-blocking")
         .attr("viewBox", "0 -5 10 10")
         .attr("refX", 15)
         .attr("refY", 0)
@@ -245,37 +443,22 @@ function renderGraph(graph) {
         .attr("orient", "auto-start-reverse")
         .append("path")
         .attr("d", "M0,-5L10,0L0,5")
-        .attr("fill", "#EF4444"); // Red color (Tailwind red-500)
+        .attr("fill", "#EF4444");
 
     const simulation = d3.forceSimulation(graph.nodes)
-        .force("link", d3.forceLink(graph.links).id(d => d.id).distance(140))
+        .force("link", d3.forceLink(graph.links).id(d => d.id).distance(150))
         .force("charge", d3.forceManyBody().strength(-50))
         .force("center", d3.forceCenter(width / 2, height / 2))
-        .force("collide", d3.forceCollide().radius(d => radiusScale(d.storyPoints) + 3));
+        .force("collide", d3.forceCollide().radius(d => radiusScale(d.storyPoints) + 5));
 
-    // Conditionally style the links and apply the correct marker.
-    const link = container.append("g")
-        .attr("class", "links")
-        .selectAll("line")
+    const link = container.append("g").attr("class", "links").selectAll("line")
         .data(graph.links)
         .join("line")
-        .style("stroke", d => { // Set stroke color based on type
-            if (d.type.toLowerCase().trim() === 'blocks') {
-                return "#EF4444"; // Red for blocking
-            }
-            return "#9ca3af"; // Default gray
-        })
+        .style("stroke", d => d.isBlocking ? "#EF4444" : "#9ca3af") // Use the flag here
         .style("stroke-opacity", 0.8)
-        .attr("marker-end", d => { // Apply marker based on type
-            if (d.type.toLowerCase().trim() === 'blocks') {
-                return "url(#arrow-blocking)"; // Use the new red marker
-            }
-            return null;
-        });
+        .attr("marker-end", d => d.isBlocking ? "url(#arrow-blocking)" : null); // And here
 
-    const linkLabelGroup = container.append("g")
-        .attr("class", "link-labels")
-        .selectAll("g")
+    const linkLabelGroup = container.append("g").attr("class", "link-labels").selectAll("g")
         .data(graph.links)
         .join("g");
 
@@ -290,20 +473,15 @@ function renderGraph(graph) {
         .attr("fill", "#f9fafb")
         .attr("rx", 3)
         .each(function(d) {
-            const textNode = this.parentNode.querySelector('text');
-            if (textNode) {
-                const bbox = textNode.getBBox();
-                d3.select(this)
-                    .attr("x", bbox.x - 4)
-                    .attr("y", bbox.y - 2)
-                    .attr("width", bbox.width + 8)
-                    .attr("height", bbox.height + 4);
-            }
+            const bbox = this.parentNode.querySelector('text').getBBox();
+            d3.select(this)
+                .attr("x", bbox.x - 4).attr("y", bbox.y - 2)
+                .attr("width", bbox.width + 8).attr("height", bbox.height + 4);
         });
 
     const blockedNodeIds = new Set(
         graph.links
-            .filter(link => link.type.toLowerCase().trim() === 'blocks')
+            .filter(link => link.isBlocking) // Use the flag here
             .map(link => link.target.id || link.target)
     );
 
@@ -328,26 +506,23 @@ function renderGraph(graph) {
         .attr("y", d => radiusScale(d.storyPoints) + 10);
 
     simulation.on("tick", () => {
-        link.attr("x1", d => d.source.x)
-            .attr("y1", d => d.source.y)
+        link.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
             .attr("x2", d => {
                 const dx = d.target.x - d.source.x;
                 const dy = d.target.y - d.source.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 const targetRadius = radiusScale(d.target.storyPoints || 0);
-                return d.target.x - (dx / distance) * (targetRadius + 2); // +2 for padding
+                return d.target.x - (dx / distance) * (targetRadius + 5);
             })
             .attr("y2", d => {
                 const dx = d.target.x - d.source.x;
                 const dy = d.target.y - d.source.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 const targetRadius = radiusScale(d.target.storyPoints || 0);
-                return d.target.y - (dy / distance) * (targetRadius + 2); // +2 for padding
+                return d.target.y - (dy / distance) * (targetRadius + 5);
             });
 
-
         node.attr("transform", d => `translate(${d.x},${d.y})`);
-
         linkLabelGroup.attr("transform", d => {
             const x = d.source.x + 0.50 * (d.target.x - d.source.x);
             const y = d.source.y + 0.50 * (d.target.y - d.source.y);
@@ -393,198 +568,4 @@ function drag(simulation) {
         d.fy = null;
     }
     return d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended);
-}
-
-/**
- * Calculates the dependency level for each task using topological sort.
- * Returns a map of nodeId -> level.
- */
-function calculateTaskLevels(nodes, links) {
-    const levels = new Map();
-    const inDegree = new Map(nodes.map(n => [n.id, 0]));
-    const adj = new Map(nodes.map(n => [n.id, []]));
-
-    // Build the graph representation
-    links.forEach(link => {
-        if (link.type.toLowerCase().trim() === 'blocks') {
-            const source = link.source.id || link.source;
-            const target = link.target.id || link.target;
-            adj.get(source).push(target);
-            inDegree.set(target, (inDegree.get(target) || 0) + 1);
-        }
-    });
-
-    // Find all starting nodes (in-degree is 0)
-    const queue = [];
-    for (const [nodeId, degree] of inDegree.entries()) {
-        if (degree === 0) {
-            queue.push(nodeId);
-            levels.set(nodeId, 0);
-        }
-    }
-
-    let head = 0;
-    while (head < queue.length) {
-        const u = queue[head++];
-        const currentLevel = levels.get(u);
-
-        for (const v of (adj.get(u) || [])) {
-            inDegree.set(v, inDegree.get(v) - 1);
-            // Set the level of the dependent task to be one greater
-            levels.set(v, Math.max(levels.get(v) || 0, currentLevel + 1));
-            if (inDegree.get(v) === 0) {
-                queue.push(v);
-            }
-        }
-    }
-    return levels;
-}
-
-/**
- * Calculates the start and end times for each task based on dependencies.
- */
-function calculateTaskTimes(nodes, links) {
-    // A map to store the start, end, and duration for each task
-    const times = new Map(nodes.map(n => [n.id, {
-        start: 0,
-        end: 0,
-        duration: Math.max(1, n.storyPoints || 1) // Duration is based on story points
-    }]));
-
-    // Maps to build a graph representation for sorting
-    const inDegree = new Map(nodes.map(n => [n.id, 0]));
-    const adj = new Map(nodes.map(n => [n.id, []]));
-
-    // Build the graph from "Blocks" links
-    links.forEach(link => {
-        if (link.type.toLowerCase().trim() === 'blocks') {
-            const source = link.source.id || link.source; // The task that blocks
-            const target = link.target.id || link.target; // The task that is blocked
-            adj.get(source).push(target);
-            inDegree.set(target, (inDegree.get(target) || 0) + 1);
-        }
-    });
-
-    // Find all starting tasks (those with no prerequisites)
-    const queue = nodes.filter(n => inDegree.get(n.id) === 0).map(n => n.id);
-
-    // Process the queue
-    let head = 0;
-    while (head < queue.length) {
-        const u_id = queue[head++];
-        const u_task = times.get(u_id);
-
-        // This task's end time is its start time plus its duration
-        u_task.end = u_task.start + u_task.duration;
-
-        // For every task that this one blocks...
-        for (const v_id of (adj.get(u_id) || [])) {
-            const v_task = times.get(v_id);
-            // ...its start time must be at least the end time of the current task
-            v_task.start = Math.max(v_task.start, u_task.end);
-
-            inDegree.set(v_id, inDegree.get(v_id) - 1);
-            if (inDegree.get(v_id) === 0) {
-                queue.push(v_id);
-            }
-        }
-    }
-    return times;
-}
-
-/**
- * Renders a Gantt chart based on calculated task start/end times.
- */
-function renderGanttChart(data) {
-    const ganttHeaderContainer = document.getElementById('gantt-header');
-    ganttHeaderContainer.innerHTML = '';
-    const ganttRowsContainer = document.getElementById('gantt-rows');
-    ganttRowsContainer.innerHTML = '';
-
-    const taskTimes = calculateTaskTimes(data.nodes, data.links);
-    
-    let maxTime = 0;
-    for (const task of taskTimes.values()) {
-        if (task.end > maxTime) maxTime = task.end;
-    }
-    const scaleEnd = maxTime;
-
-
-    // -- Render rows --
-
-    const ganttRowsHTML = data.nodes
-        .sort((a, b) => (taskTimes.get(a.id)?.start || 0) - (taskTimes.get(b.id)?.start || 0))
-        .map(node => {
-            const times = taskTimes.get(node.id);
-            if (!times || !scaleEnd) return '';
-
-            const leftPercent = (times.start / scaleEnd) * 100;
-            const widthPercent = (times.duration / scaleEnd) * 100;
-        
-            return `
-                <div data-node-id="${node.id}" class="flex items-center p-2 border-b border-gray-200 text-sm cursor-pointer hover:border-indigo-600 rounded-full">
-                    <div class="w-1/3 truncate" title="${node.summary}">
-                        <span class="font-mono text-xs text-gray-500">${node.id}</span>
-                        <span class="ml-2">${node.summary}</span>
-                    </div>
-                    <div class="w-2/3 relative h-6 bg-gray-200 rounded">
-                        <div class="absolute h-6 rounded text-white text-xs flex items-center justify-center overflow-hidden" 
-                             title="${node.storyPoints || 1} points"
-                             style="background-color: ${statusColors[node.statusCategory] || statusColors.default}; 
-                                    left: ${leftPercent}%; 
-                                    width: ${widthPercent}%;">
-                             <span class="px-1">${node.storyPoints || 'n/a'}</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-    }).join('');
-    ganttRowsContainer.innerHTML = ganttRowsHTML;
-
-
-    // -- Render Header --
-    let headerLevelsHTML = '';
-    if (scaleEnd > 0) {
-        let increment = 1;
-        if (scaleEnd > 50) increment = 10;
-        else if (scaleEnd > 20) increment = 5;
-        else if (scaleEnd > 10) increment = 2;
-
-        for (let i = increment; i <= scaleEnd; i += increment) {
-            const position = (i / scaleEnd) * 100;
-            headerLevelsHTML += `
-                <div class="absolute h-full top-0" style="left: ${position}%;">
-                    <div class="w-px h-2 bg-gray-300"></div>
-                    <div class="absolute -top-4 text-xs text-gray-500" style="transform: translateX(-50%);">${i}</div>
-                </div>
-            `;
-        }
-    }
-
-    ganttHeaderContainer.innerHTML = `
-        <div class="flex items-center border-b-2 pb-2 mb-4">
-            <div class="w-1/3 font-bold">Task</div>
-            <div class="w-2/3 relative h-1">
-                <div class="absolute -top-4 left-0 text-xs text-gray-500">0</div>
-                ${headerLevelsHTML}
-            </div>
-        </div>
-    `;
-
-    // Add click listeners after rendering the HTML
-    ganttContainer.querySelectorAll('[data-node-id]').forEach(row => {
-        const nodeId = row.dataset.nodeId;
-        const nodeData = data.nodes.find(n => n.id === nodeId);
-        if (nodeData) {
-            row.addEventListener('click', () => {
-                updateIssueDetails(nodeData);
-                ganttRowsContainer.querySelectorAll('[data-node-id]').forEach(r => {
-                    r.classList.remove('bg-indigo-100');
-                    r.classList.add('hover:bg-gray-100');
-                });
-                row.classList.add('bg-indigo-100');
-                row.classList.remove('hover:bg-gray-100');
-            });
-        }
-    });
 }
