@@ -496,29 +496,33 @@ function calculateTaskTimes(nodes, links) {
  * Renders a Gantt chart based on calculated task start/end times.
  */
 function renderGanttChart(data) {
-    ganttContainer.innerHTML = '';
+    const ganttHeaderContainer = document.getElementById('gantt-header');
+    ganttHeaderContainer.innerHTML = '';
+    const ganttRowsContainer = document.getElementById('gantt-rows');
+    ganttRowsContainer.innerHTML = '';
+
     const taskTimes = calculateTaskTimes(data.nodes, data.links);
     
-    // Find the total duration of the project to set the scale
     let maxTime = 0;
     for (const task of taskTimes.values()) {
         if (task.end > maxTime) maxTime = task.end;
     }
     const scaleEnd = maxTime;
 
-    // Sort the tasks by their start time
-    const ganttRows = data.nodes
+
+    // -- Render rows --
+
+    const ganttRowsHTML = data.nodes
         .sort((a, b) => (taskTimes.get(a.id)?.start || 0) - (taskTimes.get(b.id)?.start || 0))
         .map(node => {
             const times = taskTimes.get(node.id);
             if (!times || !scaleEnd) return '';
 
-            // Calculate the position and width using the accurate timeline scale
             const leftPercent = (times.start / scaleEnd) * 100;
             const widthPercent = (times.duration / scaleEnd) * 100;
         
             return `
-                <div class="flex items-center p-2 border-b border-gray-200 text-sm">
+                <div data-node-id="${node.id}" class="flex items-center p-2 border-b border-gray-200 text-sm cursor-pointer hover:border-indigo-600 rounded-full">
                     <div class="w-1/3 truncate" title="${node.summary}">
                         <span class="font-mono text-xs text-gray-500">${node.id}</span>
                         <span class="ml-2">${node.summary}</span>
@@ -535,24 +539,20 @@ function renderGanttChart(data) {
                 </div>
             `;
     }).join('');
+    ganttRowsContainer.innerHTML = ganttRowsHTML;
 
-    // --- HEADER LOGIC ---
-    let headerLevels = '';
+
+    // -- Render Header --
+    let headerLevelsHTML = '';
     if (scaleEnd > 0) {
-        // Determine a smart tick increment to avoid clutter
         let increment = 1;
-        if (scaleEnd > 50) {
-            increment = 10;
-        } else if (scaleEnd > 20) {
-            increment = 5;
-        } else if (scaleEnd > 10) {
-            increment = 2;
-        }
+        if (scaleEnd > 50) increment = 10;
+        else if (scaleEnd > 20) increment = 5;
+        else if (scaleEnd > 10) increment = 2;
 
-        // Create a tick mark at each increment
         for (let i = increment; i <= scaleEnd; i += increment) {
             const position = (i / scaleEnd) * 100;
-            headerLevels += `
+            headerLevelsHTML += `
                 <div class="absolute h-full top-0" style="left: ${position}%;">
                     <div class="w-px h-2 bg-gray-300"></div>
                     <div class="absolute -top-4 text-xs text-gray-500" style="transform: translateX(-50%);">${i}</div>
@@ -561,16 +561,30 @@ function renderGanttChart(data) {
         }
     }
 
-    ganttContainer.innerHTML = `
-        <div class="p-4">
-            <div class="flex items-center border-b-2 pb-2 mb-4">
-                <div class="w-1/3 font-bold">Task</div>
-                <div class="w-2/3 relative h-1">
-                    <div class="absolute -top-4 left-0 text-xs text-gray-500">0</div>
-                    ${headerLevels}
-                </div>
+    ganttHeaderContainer.innerHTML = `
+        <div class="flex items-center border-b-2 pb-2 mb-4">
+            <div class="w-1/3 font-bold">Task</div>
+            <div class="w-2/3 relative h-1">
+                <div class="absolute -top-4 left-0 text-xs text-gray-500">0</div>
+                ${headerLevelsHTML}
             </div>
-            ${ganttRows}
         </div>
     `;
+
+    // Add click listeners after rendering the HTML
+    ganttContainer.querySelectorAll('[data-node-id]').forEach(row => {
+        const nodeId = row.dataset.nodeId;
+        const nodeData = data.nodes.find(n => n.id === nodeId);
+        if (nodeData) {
+            row.addEventListener('click', () => {
+                updateIssueDetails(nodeData);
+                ganttRowsContainer.querySelectorAll('[data-node-id]').forEach(r => {
+                    r.classList.remove('bg-indigo-100');
+                    r.classList.add('hover:bg-gray-100');
+                });
+                row.classList.add('bg-indigo-100');
+                row.classList.remove('hover:bg-gray-100');
+            });
+        }
+    });
 }

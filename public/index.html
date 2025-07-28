@@ -71,10 +71,10 @@
 
         </div>
 
-        <!-- ===== Right Panel: Graph Visualization ===== -->
-        <div class="flex-1 flex flex-col bg-gray-100 overflow-hidden">
+        <!-- ===== Right Panel: Graph/Gantt Visualization ===== -->
+        <div class="flex-1 flex flex-col bg-gray-100">
             <!-- This is the main content area for the right panel -->
-            <div class="p-4 flex flex-col flex-1">
+            <div class="p-4 flex flex-col flex-1 min-h-0">
 
                 <!-- View Switcher -->
                 <div class="flex justify-center mb-4">
@@ -125,7 +125,10 @@
                 </div>
 
                 <!-- Gant Chart Container -->
-                <div id="gantt-container" class="hidden flex-1 overflow-auto"></div>
+                <div id="gantt-container" class="hidden flex flex-col flex-1 p-4 min-h-0">
+                    <div id="gantt-header"></div>
+                    <div id="gantt-rows" class="flex-1 overflow-y-auto"></div>
+                </div>
             </div>
         </div>
 
