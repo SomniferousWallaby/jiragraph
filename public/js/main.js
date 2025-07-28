@@ -17,6 +17,7 @@ const showGanttBtn = document.getElementById('show-gantt-btn');
 // --- Global Variables ---
 let JIRA_URL, EMAIL, API_TOKEN, EPIC_KEY;
 let currentGraphData = null;
+let selectedNodeId = null;
 
 // --- STATUS COLOR MAPPING ---
 const statusColors = {
@@ -83,6 +84,9 @@ window.addEventListener('resize', () => {
 
 showGraphBtn.addEventListener('click', () => {
     setActiveView('graph');
+    if (currentGraphData) {
+        renderGraph(currentGraphData);
+    }
 });
 
 showGanttBtn.addEventListener('click', () => {
@@ -406,16 +410,31 @@ function renderGanttChart(data) {
         const nodeData = data.nodes.find(n => n.id === nodeId);
         if (nodeData) {
             row.addEventListener('click', () => {
-                updateIssueDetails(nodeData);
+                // If clicking the already selected row, deselect it. Otherwise, select the new one.
+                const newSelectionData = (nodeId === selectedNodeId) ? null : nodeData;
+                updateIssueDetails(newSelectionData);
+
+                // Update styles for all rows based on the new selection
                 ganttRowsContainer.querySelectorAll('[data-node-id]').forEach(r => {
-                    r.classList.remove('bg-indigo-100', 'hover:bg-indigo-100');
-                    r.classList.add('hover:bg-gray-100');
+                    const isSelected = r.dataset.nodeId === selectedNodeId; // selectedNodeId is now updated
+                    r.classList.toggle('bg-indigo-100', isSelected);
+                    r.classList.toggle('hover:bg-indigo-100', isSelected);
+                    r.classList.toggle('hover:bg-gray-100', !isSelected);
                 });
-                row.classList.add('bg-indigo-100', 'hover:bg-indigo-100');
-                row.classList.remove('hover:bg-gray-100');
             });
         }
     });
+
+    // If a node was selected in another view, highlight it here and scroll to it.
+    if (selectedNodeId) {
+        const selectedRow = ganttRowsContainer.querySelector(`[data-node-id="${selectedNodeId}"]`);
+        if (selectedRow) {
+            selectedRow.classList.add('bg-indigo-100', 'hover:bg-indigo-100');
+            selectedRow.classList.remove('hover:bg-gray-100');
+            // Scroll the item into view for better UX
+            selectedRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
 }
 
 
@@ -427,6 +446,19 @@ function renderGraph(graph) {
     const height = graphContainer.clientHeight;
     const svg = d3.select("#graph-svg").attr("viewBox", [0, 0, width, height]);
     svg.selectAll("*").remove();
+
+    // Add a background rect to catch clicks for deselection
+    svg.append("rect")
+        .attr("width", width)
+        .attr("height", height)
+        .attr("fill", "none") // transparent
+        .style("pointer-events", "all") // catch mouse events
+        .on("click", () => {
+            updateIssueDetails(null); // Deselect
+            // Re-render the graph to show the deselected state
+            // This is simpler than trying to manually update all styles
+            renderGraph(currentGraphData);
+        });
 
     const container = svg.append("g");
 
@@ -491,26 +523,29 @@ function renderGraph(graph) {
     node.append("circle")
         .attr("r", d => radiusScale(d.storyPoints))
         .attr("fill", d => statusColors[d.statusCategory] || statusColors.default)
-        .attr("stroke", d => !blockedNodeIds.has(d.id) ? '#22C55E' : '#E5E7EB')
-        .attr("stroke-width", d => !blockedNodeIds.has(d.id) ? 3 : 1.5)
+        .attr("stroke", d => d.id === selectedNodeId ? "#3B82F6" : (!blockedNodeIds.has(d.id) ? '#22C55E' : '#E5E7EB'))
+        .attr("stroke-width", d => (d.id === selectedNodeId || !blockedNodeIds.has(d.id)) ? 3 : 1.5)
         .on("click", (event, d) => {
-            updateIssueDetails(d);
+            event.stopPropagation(); // Prevent background click from firing
 
+            updateIssueDetails(d);
+            
             // By using D3's data-binding, we can update all nodes at once
             // without relying on DOM traversal like `parentNode`. This is more robust.
 
             // Update circle styles based on data
             node.selectAll("circle")
-                .attr("stroke", n => n.id === d.id ? "#3B82F6" : (!blockedNodeIds.has(n.id) ? '#22C55E' : '#E5E7EB'))
-                .attr("stroke-width", n => (n.id === d.id || !blockedNodeIds.has(n.id)) ? 3 : 1.5);
+                .attr("stroke", n => n.id === selectedNodeId ? "#3B82F6" : (!blockedNodeIds.has(n.id) ? '#22C55E' : '#E5E7EB'))
+                .attr("stroke-width", n => (n.id === selectedNodeId || !blockedNodeIds.has(n.id)) ? 3 : 1.5);
 
-            // Update text styles based on data
+            // Update text styles by toggling a CSS class based on the data.
             node.selectAll("text")
-                .style("font-weight", n => n.id === d.id ? "bold" : "normal");
+                .classed("node-label-selected", n => n.id === selectedNodeId);
         });
 
     node.append("text")
         .text(d => d.id)
+        .classed("node-label-selected", d => d.id === selectedNodeId)
         .attr("y", d => radiusScale(d.storyPoints) + 12) // Position below circle
         .attr("text-anchor", "middle")
         .style("font-size", "10px")
@@ -548,6 +583,13 @@ function renderGraph(graph) {
 }
 
 function updateIssueDetails(d) {
+    if (!d) {
+        // Handle deselection
+        selectedNodeId = null;
+        issueDetailsPanel.classList.add('hidden');
+        return;
+    }
+    selectedNodeId = d.id;
     document.getElementById('detail-key').textContent = d.id;
     document.getElementById('detail-summary').textContent = d.summary;
     const statusBadge = document.getElementById('detail-status-badge');
