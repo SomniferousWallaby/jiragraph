@@ -479,7 +479,7 @@ function renderGraph(graph) {
 
     const simulation = d3.forceSimulation(graph.nodes)
         .force("link", d3.forceLink(graph.links).id(d => d.id).distance(100))
-        .force("charge", d3.forceManyBody().strength(-50))
+        .force("charge", d3.forceManyBody().strength(-25))
         .force("center", d3.forceCenter(width / 2, height / 2))
         .force("collide", d3.forceCollide().radius(d => radiusScale(d.storyPoints) + 5));
 
@@ -607,7 +607,7 @@ function updateIssueDetails(d) {
 
 function drag(simulation) {
     function dragstarted(event, d) {
-        if (!event.active) simulation.alphaTarget(0.1).restart();
+        if (!event.active) simulation.alphaTarget(0.01).restart();
         d.fx = d.x;
         d.fy = d.y;
     }

@@ -21,3 +21,6 @@ body {
 .marker {
     fill: #999;
 }
+.node-label-selected {
+    font-weight: 700 !important;
+}
