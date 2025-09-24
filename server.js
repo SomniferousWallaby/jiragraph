@@ -1,6 +1,5 @@
 // server.js
 
-// 1. Import necessary packages
 const express = require('express');
 const fetch = require('node-fetch'); // For making HTTP requests in Node
 const cors = require('cors'); // To handle CORS for our own server if needed
@@ -8,11 +7,11 @@ require('dotenv').config();
 
 // 2. Setup the Express app
 const app = express();
-const PORT = 8000; // We'll run our server on this port
+const PORT = 8123;
 
 // 3. Middleware
-app.use(express.json()); // To parse JSON bodies from requests
-app.use(cors()); // Enable CORS for all routes on our server
+app.use(express.json());
+app.use(cors());
 
 // Serve static files (index.html, css, js) from a 'public' folder
 app.use(express.static('public')); 
@@ -25,7 +24,7 @@ async function getStoryPointFieldId(jiraUrl, headers) {
     try {
         const response = await fetch(fieldUrl, { headers });
         if (!response.ok) {
-            console.log("Warning: Could not fetch Jira fields to find Story Point ID. Sizing will be uniform.");
+            console.log("Warning: Could not fetch Jira fields to find Story Point ID. Displayed size for each story will be set to 1.");
             return null;
         }
         const fields = await response.json();
@@ -45,7 +44,7 @@ async function getStoryPointFieldId(jiraUrl, headers) {
  * Dynamically includes the story point field in the request.
  */
 async function executeJiraSearch(jql, storyPointFieldId, jiraUrl, headers) {
-    const searchUrl = `${jiraUrl}/rest/api/3/search`;
+    const searchUrl = `${jiraUrl}/rest/api/3/search/jql`;
     
     // Base fields we always want
     const requestFields = ["summary", "status", "issuetype", "assignee", "issuelinks", "parent"];
@@ -75,9 +74,9 @@ async function executeJiraSearch(jql, storyPointFieldId, jiraUrl, headers) {
 
 // 4. The Proxy Route
 app.post('/api/jira', async (req, res) => {
-    const { jiraUrl, email, apiToken, epicKey } = req.body;
+    const { jiraUrl, email, apiToken, epicKeys } = req.body;
 
-    if (!jiraUrl || !email || !apiToken || !epicKey) {
+    if (!jiraUrl || !email || !apiToken || !epicKeys) {
         return res.status(400).json({ error: 'Missing required Jira credentials or Epic Key.' });
     }
 
@@ -95,22 +94,26 @@ app.post('/api/jira', async (req, res) => {
         } else {
              console.log("Could not find a Story Point field. Nodes will not be sized by points.");
         }
+
+        const epicKeysJQL = epicKeys.map(key => `"${key}"`).join(', ');
         
         // Try Team-Managed JQL
-        const jqlTeamManaged = `parent = "${epicKey}" OR key = "${epicKey}"`;
+        const jqlTeamManaged = `parent in (${epicKeysJQL}) OR key in (${epicKeysJQL})`;
         let result = await executeJiraSearch(jqlTeamManaged, storyPointFieldId, jiraUrl, headers);
         
         if (result.ok && result.data.issues && result.data.issues.length > 1) {
             // Return the issues AND the field ID that was found
+            console.log("Using Team-Managed JQL results.");
             return res.status(200).json({ issues: result.data.issues, storyPointFieldId: storyPointFieldId });
         }
         
         // Try Company-Managed JQL
-        const jqlCompanyManaged = `'Epic Link' = "${epicKey}" OR key = "${epicKey}"`;
+        const jqlCompanyManaged = `'Epic Link' in (${epicKeysJQL}) OR key in (${epicKeysJQL})`;
         result = await executeJiraSearch(jqlCompanyManaged, storyPointFieldId, jiraUrl, headers);
         
         if (result.ok) {
             // Return the issues AND the field ID that was found
+            console.log("Using Company-Managed JQL results.");
             return res.status(200).json({ issues: result.data.issues, storyPointFieldId: storyPointFieldId });
         } else {
             const errorMessage = result.data.errorMessages ? result.data.errorMessages.join(' ') : JSON.stringify(result.data);
