@@ -24,10 +24,11 @@ async function getStoryPointFieldId(jiraUrl, headers) {
     try {
         const response = await fetch(fieldUrl, { headers });
         if (!response.ok) {
-            console.log("Warning: Could not fetch Jira fields to find Story Point ID. Displayed size for each story will be set to 1.");
+            console.info("Could not fetch Jira fields to find Story Point ID. Displayed size for each story will be set to 1.");
             return null;
         }
         const fields = await response.json();
+        console.debug("Fetched fields from Jira:", fields);
         // Find the story point field. Tries 'Story Points' and 'Story Point Estimate'.
         const storyPointField = fields.find(field =>
             field.custom && (field.name.toUpperCase() === 'STORY POINTS' || field.name.toUpperCase() === 'STORY POINT ESTIMATE')
@@ -63,8 +64,11 @@ async function executeJiraSearch(jql, storyPointFieldId, jiraUrl, headers) {
                 maxResults: 100 
             })
         });
-
         const data = await apiResponse.json();
+        console.debug('Searching Jira with JQL:', jql);
+        console.debug('Jira search response:', data);
+        if (data.errorMessages) console.error('Jira errorMessages:', data.errorMessages);
+        if (data.warningMessages) console.warn('Jira warningMessages:', data.warningMessages);
         return { ok: apiResponse.ok, status: apiResponse.status, data };
     } catch (error) {
         return { ok: false, status: 500, data: { error: 'Proxy to Jira fetch failed', details: error } };
@@ -75,6 +79,7 @@ async function executeJiraSearch(jql, storyPointFieldId, jiraUrl, headers) {
 // 4. The Proxy Route
 app.post('/api/jira', async (req, res) => {
     const { jiraUrl, email, apiToken, epicKeys } = req.body;
+    console.debug('Received request with:', req.body);
 
     if (!jiraUrl || !email || !apiToken || !epicKeys) {
         return res.status(400).json({ error: 'Missing required Jira credentials or Epic Key.' });
@@ -87,12 +92,12 @@ app.post('/api/jira', async (req, res) => {
     };
 
     try {
-        // First, find the story point field ID for the Jira instance.
+        // Find the story point field ID for the Jira instance.
         const storyPointFieldId = await getStoryPointFieldId(jiraUrl, headers);
         if (storyPointFieldId) {
-             console.log(`Discovered Story Point Field ID: ${storyPointFieldId}`);
+             console.debug(`Discovered Story Point Field ID: ${storyPointFieldId}`);
         } else {
-             console.log("Could not find a Story Point field. Nodes will not be sized by points.");
+             console.info("Could not find a Story Point field. Nodes will not be sized by points.");
         }
 
         const epicKeysJQL = epicKeys.map(key => `"${key}"`).join(', ');
@@ -102,8 +107,8 @@ app.post('/api/jira', async (req, res) => {
         let result = await executeJiraSearch(jqlTeamManaged, storyPointFieldId, jiraUrl, headers);
         
         if (result.ok && result.data.issues && result.data.issues.length > 1) {
-            // Return the issues AND the field ID that was found
-            console.log("Using Team-Managed JQL results.");
+            // Return the issues and the field ID that was found
+            console.info("Using Team-Managed JQL results.");
             return res.status(200).json({ issues: result.data.issues, storyPointFieldId: storyPointFieldId });
         }
         
@@ -112,8 +117,8 @@ app.post('/api/jira', async (req, res) => {
         result = await executeJiraSearch(jqlCompanyManaged, storyPointFieldId, jiraUrl, headers);
         
         if (result.ok) {
-            // Return the issues AND the field ID that was found
-            console.log("Using Company-Managed JQL results.");
+            // Return the issues and the field ID that was found
+            console.info("Using Company-Managed JQL results.");
             return res.status(200).json({ issues: result.data.issues, storyPointFieldId: storyPointFieldId });
         } else {
             const errorMessage = result.data.errorMessages ? result.data.errorMessages.join(' ') : JSON.stringify(result.data);

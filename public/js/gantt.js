@@ -2,15 +2,9 @@
  * Renders a Gantt chart with rows ordered by dependency trees.
  */
 
+import { updateIssueDetails } from "./graph.js";
+import { statusColors, epicPalette } from "./colors.js";
 
-const epicPalette = [
-    '#F59E42', 
-    '#60A5FA', 
-    '#34D399', 
-    '#F472B6', 
-    '#A78BFA', 
-    '#F87171', 
-    '#10B981'];
 
     /**
  * Calculates the start/end times and dependency graph structure for the Gantt chart.
@@ -62,7 +56,13 @@ function calculateTaskTimes(nodes, links) {
     return { times, adj, inDegree };
 }
 
-export function renderGanttChart(data) {
+export function renderGanttChart(
+    data, 
+    JIRA_URL,
+    handleNodeSelect, 
+    selectedNodeId,
+    issueDetailsPanel) {
+
     const ganttHeaderContainer = document.getElementById('gantt-header');
     const ganttRowsContainer = document.getElementById('gantt-rows');
     ganttHeaderContainer.innerHTML = '';
@@ -167,13 +167,14 @@ export function renderGanttChart(data) {
         const nodeData = data.nodes.find(n => n.id === nodeId);
         if (nodeData) {
             row.addEventListener('click', () => {
-                // If clicking the already selected row, deselect it. Otherwise, select the new one.
+                // If clicking the already selected row, deselect it. Otherwise, select the new one
                 const newSelectionData = (nodeId === selectedNodeId) ? null : nodeData;
-                updateIssueDetails(newSelectionData);
+                if (typeof handleNodeSelect === 'function') handleNodeSelect(newSelectionData);
+                updateIssueDetails(newSelectionData ? nodeData : null, handleNodeSelect, JIRA_URL, issueDetailsPanel);
 
                 // Update styles for all rows based on the new selection
                 ganttRowsContainer.querySelectorAll('[data-node-id]').forEach(r => {
-                    const isSelected = r.dataset.nodeId === selectedNodeId; // selectedNodeId is now updated
+                    const isSelected = r.dataset.nodeId === (newSelectionData ? newSelectionData.id : null);
                     r.classList.toggle('bg-indigo-100', isSelected);
                     r.classList.toggle('hover:bg-indigo-100', isSelected);
                     r.classList.toggle('hover:bg-gray-100', !isSelected);
@@ -182,7 +183,7 @@ export function renderGanttChart(data) {
         }
     });
 
-    // If a node was selected in another view, highlight it here and scroll to it.
+    // If a node was selected in the graph view, highlight it here and scroll to it.
     if (selectedNodeId) {
         const selectedRow = ganttRowsContainer.querySelector(`[data-node-id="${selectedNodeId}"]`);
         if (selectedRow) {

@@ -22,5 +22,9 @@ body {
     fill: #999;
 }
 .node-label-selected {
-    font-weight: 700 !important;
+    font-weight: bold !important;
+    text-shadow: 0 0 2px #fff, 0 0 4px #3B82F6 !important;
+    font-size: 12px !important;
 }
+
+

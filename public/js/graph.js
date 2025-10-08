@@ -2,26 +2,17 @@
  * Renders the D3 graph view.
  */
 
-// --- Module Variables ---
-let selectedNodeId = null;
-const graphContainer = document.getElementById('graph-container');
+import { statusColors } from "./colors.js";
 
-// --- Color Mapping ---
-const statusColors = {
-    'To Do': '#4B5563',
-    'In Progress': '#3B82F6',
-    'Done': '#10B981',
-    'default': '#A1A1AA'
-};
-
-function updateIssueDetails(d) {
-    if (!d) {
+export function updateIssueDetails(d, handleNodeSelect, JIRA_URL, issueDetailsPanel) {
+  if (!d) {
         // Handle deselection
-        selectedNodeId = null;
         issueDetailsPanel.classList.add('hidden');
-        return;
+        return null;
     }
-    selectedNodeId = d.id;
+    if(typeof handleNodeSelect === 'function' && d !== null) {
+        handleNodeSelect(d.id);
+    }
     document.getElementById('detail-key').textContent = d.id;
     document.getElementById('detail-summary').textContent = d.summary;
     const statusBadge = document.getElementById('detail-status-badge');
@@ -55,7 +46,18 @@ function drag(simulation) {
     return d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended);
 }
 
-export function renderGraph(graph) {
+export function renderGraph(
+  graph,
+  selectedNodeId, 
+  graphContainer, 
+  onNodeSelect, 
+  simulation, 
+  handleSimulation, 
+  zoom, 
+  handleZoom,
+  JIRA_URL,
+  issueDetailsPanel
+) {
     let node; // Declare node selection here to be accessible in click handlers
     const width = graphContainer.clientWidth;
     const height = graphContainer.clientHeight;
@@ -66,10 +68,11 @@ export function renderGraph(graph) {
     svg.append("rect")
         .attr("width", width)
         .attr("height", height)
-        .attr("fill", "none") // transparent
-        .style("pointer-events", "all") // catch mouse events
+        .attr("fill", "none")
+        .style("pointer-events", "all")
         .on("click", () => {
-            updateIssueDetails(null); // Deselect
+            onNodeSelect(null); // Deselect
+            updateIssueDetails(null, onNodeSelect, JIRA_URL, issueDetailsPanel); // Deselect
             if (node) {
                 node.selectAll("circle")
                     .attr("stroke", n => n.id === selectedNodeId ? "#3B82F6" : (!blockedNodeIds.has(n.id) ? '#22C55E' : '#E5E7EB'))
@@ -97,12 +100,14 @@ export function renderGraph(graph) {
         .attr("d", "M0,-5L10,0L0,5")
         .attr("fill", "#EF4444");
 
-    // Assign to the global simulation variable instead of a local const
     simulation = d3.forceSimulation(graph.nodes)
         .force("link", d3.forceLink(graph.links).id(d => d.id).distance(100))
         .force("charge", d3.forceManyBody().strength(-50))
         .force("center", d3.forceCenter(width / 2, height / 2))
         .force("collide", d3.forceCollide().radius(d => radiusScale(d.storyPoints) + 5));
+    if (typeof handleSimulation === 'function') {
+        handleSimulation(simulation);
+    }
 
     const link = container.append("g").attr("class", "links").selectAll("line")
         .data(graph.links)
@@ -148,20 +153,10 @@ export function renderGraph(graph) {
         .attr("stroke-width", d => (d.id === selectedNodeId || !blockedNodeIds.has(d.id)) ? 3 : 1.5)
         .on("click", (event, d) => {
             event.stopPropagation(); // Prevent background click from firing
-
-            updateIssueDetails(d);
-            
-            // By using D3's data-binding, we can update all nodes at once
-            // without relying on DOM traversal like `parentNode`. This is more robust.
-
-            // Update circle styles based on data
-            node.selectAll("circle")
-                .attr("stroke", n => n.id === selectedNodeId ? "#3B82F6" : (!blockedNodeIds.has(n.id) ? '#22C55E' : '#E5E7EB'))
-                .attr("stroke-width", n => (n.id === selectedNodeId || !blockedNodeIds.has(n.id)) ? 3 : 1.5);
-
-            // Update text styles by toggling a CSS class based on the data.
-            node.selectAll("text")
-                .classed("node-label-selected", n => n.id === selectedNodeId);
+            if (typeof onNodeSelect === 'function') {
+                onNodeSelect(d.id);
+            }
+            updateIssueDetails(d, onNodeSelect, JIRA_URL, issueDetailsPanel);
         });
 
     node.append("text")
@@ -197,26 +192,28 @@ export function renderGraph(graph) {
         });
     });
 
-    // Assign to the global zoom variable instead of a local const
     zoom = d3.zoom().scaleExtent([0.1, 4]).on("zoom", (event) => {
         container.attr('transform', event.transform);
     });
+    if (typeof handleZoom === 'function') {
+        handleZoom(zoom);
+    };
     svg.call(zoom);
 }
 
 /**
  * Updates the styles of the graph (selection, etc.) without re-rendering
- * the entire simulation. This is used when switching back to the graph view.
+ * the entire simulation. This is used when switching back to the graph view
  */
-export function updateGraphSelection() {
+export function updateGraphSelection(currentGraphData, selectedNodeId) {
     if (!currentGraphData) return;
 
     const svg = d3.select("#graph-svg");
     const node = svg.selectAll(".nodes g"); // Re-select the nodes based on the class we assigned
     
-    if (node.empty()) return; // Graph hasn't been rendered yet, nothing to update.
+    if (node.empty()) return; // Graph hasn't been rendered yet, nothing to update
 
-    // We need to recalculate this as it's not stored globally.
+    // Recompute blocked nodes in case the graph data changed
     const blockedNodeIds = new Set(
         currentGraphData.links
             .filter(link => link.isBlocking)

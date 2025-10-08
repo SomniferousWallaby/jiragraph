@@ -1,13 +1,27 @@
 // --- JIRA & D3 LOGIC ---
 
-const loader = document.getElementById('loader');
-const placeholder = document.getElementById('placeholder');
-const issueDetailsPanel = document.getElementById('issue-details');
-const epicHeader = document.getElementById('epic-header');
-const epicTitle = document.getElementById('epic-title');
-const epicSummary = document.getElementById('epic-summary');
+import { setActiveView } from "./state.js";
+import { renderGraph } from "./graph.js";
 
-export async function fetchDataAndRender() {
+export async function fetchDataAndRender(JIRA_URL, EMAIL, API_TOKEN, EPIC_KEY,
+  handleNodeSelect,
+  selectedNodeId,
+  handleSimulation,
+  simulation,
+  handleZoom,
+  zoom,
+  graphContainer,
+  ganttContainer,
+  loader,
+  placeholder,
+  issueDetailsPanel,
+  epicHeader,
+  epicTitle,
+  epicSummary,
+  resetViewBtn,
+  showGraphBtn,
+  showGanttBtn
+) {
     loader.classList.remove('hidden');
     placeholder.classList.add('hidden');
     issueDetailsPanel.classList.add('hidden');
@@ -22,6 +36,7 @@ export async function fetchDataAndRender() {
 
 
     try {
+        console.log('Fetching data with:', { JIRA_URL, EMAIL, API_TOKEN, EPIC_KEY });
         const response = await fetch('/api/jira', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -35,7 +50,7 @@ export async function fetchDataAndRender() {
         }
 
         const responseData = await response.json();
-        const { epic, nodes, links } = processJiraData(responseData.issues, responseData.storyPointFieldId);
+        const { epic, nodes, links } = processJiraData(responseData.issues, responseData.storyPointFieldId, EPIC_KEY);
 
         if (epic) {
             epicTitle.textContent = epic.id;
@@ -44,16 +59,27 @@ export async function fetchDataAndRender() {
         }
 
         const graph = { nodes, links };
-        currentGraphData = graph;
-
+    
         if (graph.nodes.length > 0) {
-            setActiveView('graph');
-            renderGraph(graph);
+            setActiveView('graph', graphContainer, ganttContainer, showGraphBtn, showGanttBtn);
+            renderGraph(
+              graph, 
+              selectedNodeId, 
+              graphContainer, 
+              handleNodeSelect, 
+              simulation, 
+              handleSimulation,
+              zoom,
+              handleZoom,
+              JIRA_URL,
+              issueDetailsPanel
+            );
             resetViewBtn.classList.remove('hidden');
         } else {
             placeholder.innerHTML = `<p class="text-xl font-medium text-red-500">No child issues found for Epic ${EPIC_KEY}.</p>`;
             placeholder.classList.remove('hidden');
         }
+        return graph;
 
     } catch (error) {
         console.error('Error fetching from Jira:', error);
@@ -68,7 +94,7 @@ export async function fetchDataAndRender() {
  * Processes Jira issue links to correctly handle all link types
  * and add an `isBlocking` flag for use in both views.
  */
-function processJiraData(issues, storyPointFieldId) {
+function processJiraData(issues, storyPointFieldId, EPIC_KEY) {
     const epicKeys = Array.isArray(EPIC_KEY) ? EPIC_KEY : [EPIC_KEY];
     const epicIssues = issues.filter(issue => epicKeys.includes(issue.key));
     const childIssues = issues.filter(issue => !epicKeys.includes(issue.key));

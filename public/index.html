@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jira Epic Issue Visualizer</title>
+    <title>Jira Epic Visualizer</title>
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
     <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- D3.js for data visualization -->
@@ -127,14 +128,23 @@
                 <!-- Gant Chart Container -->
                 <div id="gantt-container" class="hidden flex flex-col flex-1 p-4 min-h-0">
                     <div id="gantt-header"></div>
-                    <div id="gantt-rows" class="flex-1 overflow-y-auto"></div>
+                    <div id="gantt-rows" class="flex-1 overflow-y-auto pb-16"></div>
                 </div>
             </div>
         </div>
 
     </div>
 
-     <script src="js/main.js"></script>
+    <div id="estimate-bar" class="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 shadow px-4 py-2 flex items-center justify-center z-50">
+        <label for="velocity" class="font-bold mr-2">Team Velocity (points/week):</label>
+        <input id="velocity" type="number" min="1" value="20" class="border rounded px-2 py-1 w-20 mr-4">
+        <label for="numDevs" class="font-bold mr-2"># Devs:</label>
+        <input id="numDevs" type="number" min="1" value="3" class="border rounded px-2 py-1 w-12 mr-4">
+        <button id="estimate-btn" class="px-3 py-1 bg-indigo-600 text-white rounded mr-4">Estimate Time</button>
+        <span id="estimate-output" class="text-lg font-bold text-indigo-700"></span>
+    </div>
+
+    <script src="js/main.js" type="module"></script>
      
 </body>
 </html>

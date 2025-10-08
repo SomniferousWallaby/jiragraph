@@ -5,7 +5,7 @@ const ganttContainer = document.getElementById('gantt-container');
  * Manages the active view (graph or gantt) and button styles.
  * @param {'graph' | 'gantt'} activeView - The view to make active.
  */
-export function setActiveView(activeView) {
+export function setActiveView(activeView, graphContainer, ganttContainer, showGraphBtn, showGanttBtn) {
     const ganttHeaderContainer = document.getElementById('gantt-header');
     const ganttRowsContainer = document.getElementById('gantt-rows');
 

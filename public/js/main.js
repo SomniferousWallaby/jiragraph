@@ -9,16 +9,47 @@ const visualizeBtn = document.getElementById('visualize-btn');
 const resetViewBtn = document.getElementById('reset-view-btn');
 const showGraphBtn = document.getElementById('show-graph-btn');
 const showGanttBtn = document.getElementById('show-gantt-btn');
+const graphContainer = document.getElementById('graph-container');
+const ganttContainer = document.getElementById('gantt-container');
+const loader = document.getElementById('loader');
+const placeholder = document.getElementById('placeholder');
+const issueDetailsPanel = document.getElementById('issue-details');
+const epicHeader = document.getElementById('epic-header');
+const epicTitle = document.getElementById('epic-title');
+const epicSummary = document.getElementById('epic-summary');
+
+const velocityInput = document.getElementById('velocity');
+const numDevsInput = document.getElementById('numDevs');
+const estimateBtn = document.getElementById('estimate-btn');
+const estimateOutput = document.getElementById('estimate-output');
 
 // --- Global Variables ---
 let JIRA_URL, EMAIL, API_TOKEN, EPIC_KEY;
+
+// --- Callback Functions ---
 let currentGraphData = null;
-let simulation = null; // Make simulation globally accessible
-let zoom = null; // Make zoom behavior globally accessible
+function handleCurrentGraphData(data) {
+    currentGraphData = data;
+}
+
+let selectedNodeId = null;
+function handleNodeSelect(nodeId) {
+    selectedNodeId = nodeId;
+    updateGraphSelection(currentGraphData, selectedNodeId);
+}
+
+let simulation = null;
+function handleSimulation(sim) {
+    simulation = sim;
+}
+
+let zoom = null;
+function handleZoom(z) {
+    zoom = z;
+}
 
 
 // --- EVENT LISTENERS ---
-
 document.addEventListener('DOMContentLoaded', () => {
     try {
         const savedConfig = JSON.parse(localStorage.getItem('jiraConfig'));
@@ -32,11 +63,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-visualizeBtn.addEventListener('click', () => {
+visualizeBtn.addEventListener('click', async () => {
     JIRA_URL = document.getElementById('jira-url').value.trim();
     EMAIL = document.getElementById('email').value.trim();
     API_TOKEN = document.getElementById('api-token').value.trim();
-    epic_key_input = document.getElementById('epic-key').value.trim();
+    let epic_key_input = document.getElementById('epic-key').value.trim();
     EPIC_KEY = epic_key_input.split(',').map(k => k.trim()).filter(k => k);
 
     if (!JIRA_URL || !EMAIL || !API_TOKEN || !EPIC_KEY) {
@@ -51,7 +82,27 @@ visualizeBtn.addEventListener('click', () => {
     const configToSave = { jiraUrl: JIRA_URL, email: EMAIL, epicKey: EPIC_KEY };
     localStorage.setItem('jiraConfig', JSON.stringify(configToSave));
 
-    fetchDataAndRender();
+    const graph = await fetchDataAndRender(
+        JIRA_URL, EMAIL, API_TOKEN, EPIC_KEY,
+        handleNodeSelect,
+        selectedNodeId,
+        handleSimulation,
+        simulation,
+        handleZoom,
+        zoom,
+        graphContainer,
+        ganttContainer,
+        loader,
+        placeholder,
+        issueDetailsPanel,
+        epicHeader,
+        epicTitle,
+        epicSummary,
+        resetViewBtn,
+        showGraphBtn,
+        showGanttBtn
+    );
+    handleCurrentGraphData(graph);
 });
 
 resetViewBtn.addEventListener('click', () => {
@@ -76,22 +127,67 @@ resetViewBtn.addEventListener('click', () => {
 
 window.addEventListener('resize', () => {
     if (currentGraphData) {
-        renderGraph(currentGraphData);
+        renderGraph(
+            currentGraphData, 
+            selectedNodeId, 
+            graphContainer, 
+            handleNodeSelect,
+            simulation,
+            handleSimulation,
+            zoom,
+            handleZoom,
+            JIRA_URL,
+            issueDetailsPanel
+        );
+        updateGraphSelection(currentGraphData, selectedNodeId);
     }
 });
 
 showGraphBtn.addEventListener('click', () => {
-    setActiveView('graph');
+    setActiveView('graph', graphContainer, ganttContainer, showGraphBtn, showGanttBtn);
     if (currentGraphData) {
-        updateGraphSelection();
+        updateGraphSelection(currentGraphData, selectedNodeId);
     }
 });
 
 showGanttBtn.addEventListener('click', () => {
-    setActiveView('gantt');
+    setActiveView('gantt', graphContainer, ganttContainer, showGraphBtn, showGanttBtn);
     if (currentGraphData) {
-        renderGanttChart(currentGraphData);
+        renderGanttChart(
+            currentGraphData, 
+            JIRA_URL,
+            handleNodeSelect, 
+            selectedNodeId,
+            issueDetailsPanel);
+        updateGraphSelection(currentGraphData, selectedNodeId);
     }
+});
+
+estimateBtn.addEventListener('click', () => {
+    if (!currentGraphData) {
+        estimateOutput.textContent = "No data loaded.";
+        return;
+    }
+    const velocity = Number(velocityInput.value) || 1;
+    const numDevs = Number(numDevsInput.value) || 1;
+
+    // Filter issues that are not Done
+    const remainingIssues = currentGraphData.nodes.filter(n => n.statusCategory !== "Done");
+
+    // Sum points for pointed issues
+    const remainingPoints = remainingIssues
+        .filter(n => n.storyPoints)
+        .reduce((sum, n) => sum + n.storyPoints, 0);
+
+    // Count unpointed issues
+    const unpointedCount = remainingIssues.filter(n => !n.storyPoints).length;
+
+    const teamVelocity = velocity * numDevs;
+    const weeksLeft = teamVelocity > 0 ? (remainingPoints / teamVelocity) : 0;
+
+    estimateOutput.textContent =
+        `Estimated time remaining: ${weeksLeft.toFixed(1)} weeks (${remainingPoints} points left)` +
+        (unpointedCount > 0 ? ` — ${unpointedCount} unpointed issue${unpointedCount > 1 ? 's' : ''}` : '');
 });
 
 
