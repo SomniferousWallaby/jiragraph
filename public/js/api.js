@@ -12,6 +12,7 @@ export async function fetchDataAndRender(JIRA_URL, EMAIL, API_TOKEN, EPIC_KEY,
   zoom,
   graphContainer,
   ganttContainer,
+  estimateContainer,
   loader,
   placeholder,
   issueDetailsPanel,
@@ -20,7 +21,8 @@ export async function fetchDataAndRender(JIRA_URL, EMAIL, API_TOKEN, EPIC_KEY,
   epicSummary,
   resetViewBtn,
   showGraphBtn,
-  showGanttBtn
+  showGanttBtn,
+  showEstimateBtn
 ) {
     loader.classList.remove('hidden');
     placeholder.classList.add('hidden');
@@ -61,7 +63,7 @@ export async function fetchDataAndRender(JIRA_URL, EMAIL, API_TOKEN, EPIC_KEY,
         const graph = { nodes, links };
     
         if (graph.nodes.length > 0) {
-            setActiveView('graph', graphContainer, ganttContainer, showGraphBtn, showGanttBtn);
+            setActiveView('graph', graphContainer, ganttContainer, estimateContainer, showGraphBtn, showGanttBtn, showEstimateBtn);
             renderGraph(
               graph, 
               selectedNodeId, 
@@ -162,9 +164,19 @@ function processJiraData(issues, storyPointFieldId, EPIC_KEY) {
             });
         }
     });
+    
+    let epicData = null;
+    if (epicIssues.length === 1) {
+        epicData = { id: epicIssues[0].key, summary: epicIssues[0].fields.summary };
+    } else if (epicIssues.length > 1) {
+        epicData = {
+            id: 'Multiple Epics',
+            summary: epicIssues.map(e => e.key).join(', ')
+        };
+    }
 
     return {
-        epic: epicIssues.length === 1 ? { id: epicIssues[0].key, summary: epicIssues[0].fields.summary } : null,
+        epic: epicData,
         nodes,
         links
     };

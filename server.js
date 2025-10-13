@@ -1,5 +1,6 @@
 // server.js
 
+// 1. Import dependencies
 const express = require('express');
 const fetch = require('node-fetch'); // For making HTTP requests in Node
 const cors = require('cors'); // To handle CORS for our own server if needed
@@ -8,6 +9,9 @@ require('dotenv').config();
 // 2. Setup the Express app
 const app = express();
 const PORT = 8123;
+
+// 2a. Admin users
+const ADMIN_EMAILS = ['thomas@arryved.com', 'brenton@arryved.com', 'dt@arryved.com'];
 
 // 3. Middleware
 app.use(express.json());
@@ -76,7 +80,7 @@ async function executeJiraSearch(jql, storyPointFieldId, jiraUrl, headers) {
 }
 
 
-// 4. The Proxy Route
+// 4. The Proxy Routes
 app.post('/api/jira', async (req, res) => {
     const { jiraUrl, email, apiToken, epicKeys } = req.body;
     console.debug('Received request with:', req.body);
@@ -107,7 +111,6 @@ app.post('/api/jira', async (req, res) => {
         let result = await executeJiraSearch(jqlTeamManaged, storyPointFieldId, jiraUrl, headers);
         
         if (result.ok && result.data.issues && result.data.issues.length > 1) {
-            // Return the issues and the field ID that was found
             console.info("Using Team-Managed JQL results.");
             return res.status(200).json({ issues: result.data.issues, storyPointFieldId: storyPointFieldId });
         }
@@ -117,7 +120,6 @@ app.post('/api/jira', async (req, res) => {
         result = await executeJiraSearch(jqlCompanyManaged, storyPointFieldId, jiraUrl, headers);
         
         if (result.ok) {
-            // Return the issues and the field ID that was found
             console.info("Using Company-Managed JQL results.");
             return res.status(200).json({ issues: result.data.issues, storyPointFieldId: storyPointFieldId });
         } else {
@@ -131,6 +133,104 @@ app.post('/api/jira', async (req, res) => {
     }
 });
 
+app.post('/api/developers', async (req, res) => {
+    const { jiraUrl, email, apiToken } = req.body;
+    if (!jiraUrl || !email || !apiToken) {
+        return res.status(400).json({ error: "Missing Jira credentials." });
+    }
+
+    const isAdmin = ADMIN_EMAILS.includes(email);
+
+    const headers = {
+        "Authorization": "Basic " + Buffer.from(`${email}:${apiToken}`).toString("base64"),
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    };
+
+    try {
+        const jql = 'status CHANGED TO (closed, "QA Accepted", "QA Not Needed") DURING (-30d, now())';
+
+        // Get Story Point field ID
+        const fieldRes = await fetch(`${jiraUrl}/rest/api/3/field`, { headers });
+        if (!fieldRes.ok) {
+            const errorData = await fieldRes.json();
+            return res.status(fieldRes.status).json({ error: "Failed to fetch Jira fields.", details: errorData });
+        }
+        const fields = await fieldRes.json();
+        const storyPointField = fields.find(f =>
+            f.custom && (
+                f.name.toLowerCase().includes('story point') ||
+                f.name.toLowerCase().includes('story point estimate')
+            )
+        );
+        const storyPointFieldId = storyPointField ? storyPointField.id : null;
+        
+        if (!storyPointFieldId) {
+            return res.status(404).json({ error: "Could not find a 'Story Point' custom field in your Jira instance." });
+        }
+
+        // Fetch issues
+        let allIssues = [];
+        let nextPageToken = null;
+
+        do {
+            const searchBody = {
+                jql: jql,
+                fields: ["assignee", storyPointFieldId],
+                maxResults: 100,
+                ...(nextPageToken && { nextPageToken: nextPageToken })
+            };
+            
+            const searchRes = await fetch(`${jiraUrl}/rest/api/3/search/jql`, {
+                method: "POST",
+                headers,
+                body: JSON.stringify(searchBody)
+            });
+
+            const data = await searchRes.json();
+            if (!searchRes.ok) {
+                console.error("Jira API Error:", JSON.stringify(data, null, 2));
+                return res.status(searchRes.status).json({ error: "Jira API search failed.", details: data });
+            }
+            
+            allIssues = allIssues.concat(data.issues);
+            nextPageToken = data.nextPageToken;
+
+        } while (nextPageToken);
+        console.log(`Fetched a total of ${allIssues.length} issues.`);
+
+        // Group by assignee and sum story points
+        const devMap = {};
+        for (const issue of allIssues) {
+            const assignee = issue.fields.assignee;
+            if (!assignee) continue;
+            
+            const points = issue.fields[storyPointFieldId] || 0;
+            
+            if (!devMap[assignee.accountId]) {
+                devMap[assignee.accountId] = {
+                    name: assignee.displayName,
+                    accountId: assignee.accountId,
+                    email: assignee.emailAddress || "",
+                    velocity: 0
+                };
+            }
+            devMap[assignee.accountId].velocity += points;
+        }
+
+        const devs = Object.values(devMap).filter(dev => dev.velocity > 0);
+
+        const devsToSend = isAdmin
+            ? devs  // If user is an admin, send the full data
+            : devs.map(({ velocity, ...dev }) => dev); // Non-admins don't get velocity info
+
+        res.json(devsToSend);
+
+    } catch (error) {
+        console.error("Server error:", error);
+        res.status(500).json({ error: "An internal server error occurred." });
+    }
+});
 
 // 5. Start the server
 app.listen(PORT, () => {
