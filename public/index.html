@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jira Epic Issue Visualizer</title>
+    <title>Jira Epic Visualizer</title>
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
     <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- D3.js for data visualization -->
@@ -73,7 +74,7 @@
 
         <!-- ===== Right Panel: Graph/Gantt Visualization ===== -->
         <div class="flex-1 flex flex-col bg-gray-100">
-            <!-- This is the main content area for the right panel -->
+            <!-- Main content area for the right panel -->
             <div class="p-4 flex flex-col flex-1 min-h-0">
 
                 <!-- View Switcher -->
@@ -82,20 +83,29 @@
                         <button id="show-graph-btn" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-indigo-600 rounded-l-lg hover:bg-indigo-700">
                             Graph View
                         </button>
-                        <button id="show-gantt-btn" class="px-4 py-2 text-sm font-medium text-gray-900 bg-white border-t border-b border-gray-200 rounded-r-lg hover:bg-indigo-700">
+                        <button id="show-gantt-btn" class="px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 hover:bg-gray-50">
                             Gantt View
+                        </button>
+                        <button id="show-estimate-btn" class="px-4 py-2 text-sm font-medium text-gray-900 bg-white border-t border-b border-r border-gray-200 rounded-r-lg hover:bg-gray-50">
+                            Estimate View
                         </button>
                     </div>
                 </div>
 
                 <!-- Epic Header: Sits at the top of the panel -->
-                <div id="epic-header" class="hidden pb-4 border-b border-gray-200 mb-4">
-                    <h2 id="epic-title" class="text-2xl font-bold text-gray-800"></h2>
-                    <p id="epic-summary" class="text-gray-600"></p>
+                <div id="epic-header" class="hidden pb-4 border-b border-gray-200 mb-4 flex justify-between items-center">
+                    <div>
+                        <h2 id="epic-title" class="text-2xl font-bold text-gray-800"></h2>
+                        <p id="epic-summary" class="text-gray-600"></p>
+                    </div>
+                    <div id="epic-stats-container" class="text-right flex-shrink-0 ml-4">
+                        <p id="epic-percent-complete" class="text-2xl font-bold text-green-600"></p>
+                        <p id="epic-points-summary" class="text-sm text-gray-500"></p>
+                    </div>
                 </div>
 
                 <!-- Graph Container-->
-                <div id="graph-container" class="flex-1 relative flex items-center justify-center">
+                <div id="graph-container" class="flex-1 relative flex items-center justify-center pb-22">
                      
                     <!-- Reset view button-->
                     <button id="reset-view-btn" title="Reset Layout" class="hidden absolute top-2 right-2 z-10 p-2 bg-white rounded-full shadow-md hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
@@ -106,7 +116,7 @@
                         </svg>
                     </button>
 
-                    <!-- The SVG, Loader, and Placeholder all live inside here -->
+                    <!-- SVG, Loader, and Placeholder all live here -->
                     <svg id="graph-svg" class="w-full h-full"></svg>
                     
                     <div id="loader" class="hidden absolute inset-0 bg-gray-100 bg-opacity-75 flex flex-col items-center justify-center">
@@ -127,14 +137,32 @@
                 <!-- Gant Chart Container -->
                 <div id="gantt-container" class="hidden flex flex-col flex-1 p-4 min-h-0">
                     <div id="gantt-header"></div>
-                    <div id="gantt-rows" class="flex-1 overflow-y-auto"></div>
+                    <div id="gantt-rows" class="flex-1 overflow-y-auto pb-22"></div>
+                </div>
+
+                <!-- Estimate Container -->
+                <div id="estimate-container" class="hidden flex-1 flex flex-col items-center justify-center p-8 space-y-6">
+                    <div class="w-full max-w-2xl text-center">
+                        <h2 class="text-3xl font-bold text-gray-800">Project Estimation</h2>
+                        <p class="text-gray-600 mt-2">Select developers from the list to calculate the estimated completion time based on their historical velocity.</p>
+                    </div>
+
+                    <div class="p-6 bg-white border rounded-lg shadow-sm w-full max-w-2xl flex flex-col items-center space-y-4">
+                        <h3 class="text-lg font-medium text-gray-700">Select & Allocate Developers</h3>
+                        <div id="developer-list-container" class="w-full space-y-3 p-4 border rounded-md flex-1 overflow-y-auto"></div>
+                        <div class="flex space-x-4">
+                            <button id="refresh-devs-btn" class="px-4 py-2 bg-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300">Refresh List</button>
+                            <button id="estimate-btn" class="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md hover:bg-indigo-700">Calculate Estimate</button>
+                        </div>
+                    </div>
+
+                    <div id="estimate-output" class="text-2xl font-bold text-indigo-700 h-8 text-center"></div>
                 </div>
             </div>
         </div>
-
     </div>
 
-     <script src="js/main.js"></script>
+    <script src="js/main.js" type="module"></script>
      
 </body>
 </html>
