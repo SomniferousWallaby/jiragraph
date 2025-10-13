@@ -11,7 +11,7 @@ const app = express();
 const PORT = 8123;
 
 // 2a. Admin users
-const ADMIN_EMAILS = ['thomas@arryved.com', 'brenton@arryved.com', 'dt@arryved.com'];
+const ADMIN_EMAILS = ['thomas@arryved.com', 'otherEmails'];
 
 // 3. Middleware
 app.use(express.json());
