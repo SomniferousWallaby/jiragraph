@@ -130,7 +130,7 @@ function updateEpicStats() {
     epicStatsContainer.classList.remove('hidden');
 }
 
-export function updateIssueDetailsPanel(nodeId, graphData, jiraUrl) {
+function updateIssueDetailsPanel(nodeId, graphData, jiraUrl) {
     const issueDetailsPanel = document.getElementById('issue-details');
     const detailKey = document.getElementById('detail-key');
     const detailSummary = document.getElementById('detail-summary');
@@ -190,7 +190,7 @@ export function updateIssueDetailsPanel(nodeId, graphData, jiraUrl) {
 async function fetchDevelopers() {
     if (!JIRA_URL || !EMAIL || !API_TOKEN) {
         console.warn("Cannot fetch developers, Jira credentials are not set.");
-        return [];
+        return { developers: [], isUserAdmin: false }; 
     }
     try {
         const response = await fetch('/api/developers', {
@@ -200,14 +200,49 @@ async function fetchDevelopers() {
         });
         if (!response.ok) {
             console.error('Failed to fetch developers:', response.statusText);
-            return [];
+            return { developers: [], isUserAdmin: false };
         }
-        return await response.json();
+        return await response.json(); 
     } catch (error) {
         console.error('Error fetching developers:', error);
-        return [];
+        return { developers: [], isUserAdmin: false };
     }
 }
+
+function persistAndRerenderDevList() {
+    devs.forEach(dev => {
+        if (!savedDevStates[dev.accountId]) {
+            savedDevStates[dev.accountId] = { isIncluded: false, allocation: '100', isFe: false, isBe: false };
+        }
+        const state = savedDevStates[dev.accountId];
+
+        const masterCheckbox = document.getElementById(`dev-include-${dev.accountId}`);
+        const allocationInput = document.querySelector(`input[data-allocation-id="${dev.accountId}"]`);
+        if (masterCheckbox) state.isIncluded = masterCheckbox.checked;
+        if (allocationInput) state.allocation = allocationInput.value;
+
+        const feCheckbox = document.getElementById(`fe-skill-${dev.accountId}`);
+        const beCheckbox = document.getElementById(`be-skill-${dev.accountId}`);
+        if (feCheckbox) state.isFe = feCheckbox.checked;
+        if (beCheckbox) state.isBe = beCheckbox.checked;
+    });
+    renderDeveloperList(devs);
+    
+    for (const accountId in savedDevStates) {
+        const state = savedDevStates[accountId];
+        
+        const newMasterCheckbox = document.getElementById(`dev-include-${accountId}`);
+        const newAllocationInput = document.querySelector(`input[data-allocation-id="${accountId}"]`);
+        const newFeCheckbox = document.getElementById(`fe-skill-${accountId}`);
+        const newBeCheckbox = document.getElementById(`be-skill-${accountId}`);
+
+        if (newMasterCheckbox) newMasterCheckbox.checked = state.isIncluded;
+        if (newAllocationInput) newAllocationInput.value = state.allocation;
+        if (newFeCheckbox) newFeCheckbox.checked = state.isFe;
+        if (newBeCheckbox) newBeCheckbox.checked = state.isBe;
+    }
+}
+
 
 function renderDeveloperList(devList) {
     if (!devListContainer) return;
@@ -264,11 +299,11 @@ function renderDeveloperList(devList) {
 
 async function loadDevelopers() {
     savedDevStates = {};
-    devs = await fetchDevelopers();
+    const { developers, isUserAdmin } = await fetchDevelopers();
+    devs = developers; 
     devs.sort((a, b) => a.name.localeCompare(b.name));
 
-    const isAdmin = devs.length > 0 && devs[0].velocity !== undefined;
-    if (isAdmin) {
+    if (isUserAdmin) {
         adminControls.classList.remove('hidden');
         adminControls.classList.add('flex'); 
     } else {
@@ -353,7 +388,7 @@ function renderEstimationView() {
         output = `Est. Time: <span class="font-black">${totalTime.toFixed(1)}</span> weeks`;
         output += `<div class="text-sm font-normal mt-1">(FE: ${feTime.toFixed(1)} wks, BE: ${beTime.toFixed(1)} wks, FS: ${fsTime.toFixed(1)} wks, General: ${generalTime.toFixed(1)} wks)</div>`;
         if (unpointedCount > 0) {
-            output += `<div class="text-sm font-normal text-gray-600">— with ${unpointedCount} unpointed issues</div>`;
+            output += `<div class="text-sm font-normal text-gray-600">— with ${unpointedCount} incomplete, unpointed issues</div>`;
         }
     }
     estimateOutput.innerHTML = output;
@@ -408,37 +443,7 @@ refreshDevsBtn.addEventListener('click', loadDevelopers);
 estimateBtn.addEventListener('click', renderEstimationView);
 
 skillToggle.addEventListener('change', () => {
-    devs.forEach(dev => {
-        if (!savedDevStates[dev.accountId]) {
-            savedDevStates[dev.accountId] = { isIncluded: false, allocation: '100', isFe: false, isBe: false };
-        }
-        const state = savedDevStates[dev.accountId];
-        const masterCheckbox = document.getElementById(`dev-include-${dev.accountId}`);
-        const allocationInput = document.querySelector(`input[data-allocation-id="${dev.accountId}"]`);
-        if (masterCheckbox) state.isIncluded = masterCheckbox.checked;
-        if (allocationInput) state.allocation = allocationInput.value;
-
-        const feCheckbox = document.getElementById(`fe-skill-${dev.accountId}`);
-        const beCheckbox = document.getElementById(`be-skill-${dev.accountId}`);
-        if (feCheckbox) state.isFe = feCheckbox.checked;
-        if (beCheckbox) state.isBe = beCheckbox.checked;
-    });
-
-    renderDeveloperList(devs);
-
-    for (const accountId in savedDevStates) {
-        const state = savedDevStates[accountId];
-        const newMasterCheckbox = document.getElementById(`dev-include-${accountId}`);
-        const newAllocationInput = document.querySelector(`input[data-allocation-id="${accountId}"]`);
-        const newFeCheckbox = document.getElementById(`fe-skill-${accountId}`);
-        const newBeCheckbox = document.getElementById(`be-skill-${accountId}`);
-
-        if (newMasterCheckbox) newMasterCheckbox.checked = state.isIncluded;
-        if (newAllocationInput) newAllocationInput.value = state.allocation;
-        if (newFeCheckbox) newFeCheckbox.checked = state.isFe;
-        if (newBeCheckbox) newBeCheckbox.checked = state.isBe;
-    }
-
+    persistAndRerenderDevList();
     renderEstimationView();
 });
 
@@ -479,7 +484,6 @@ showGanttBtn.addEventListener('click', () => {
             currentGraphData, JIRA_URL, handleNodeSelect,
             selectedNodeId
         );
-        updateGraphSelection(currentGraphData, selectedNodeId);
     }
 });
 
@@ -489,5 +493,5 @@ showEstimateBtn.addEventListener('click', () => {
 });
 
 velocityToggle.addEventListener('change', () => {
-    renderDeveloperList(devs);
+    persistAndRerenderDevList();
 });

@@ -110,7 +110,7 @@ export function renderGraph(
         .data(graph.nodes).join("g").call(drag(simulation));
 
     node.append("circle")
-        .attr("r", d => radiusScale(d.storyPoints))
+        .attr("r", d => radiusScale(d.storyPoints || 0))
         .attr("fill", d => statusColors[d.statusCategory] || statusColors.default)
         .attr("stroke", d => d.id === selectedNodeId ? "#3B82F6" : (!blockedNodeIds.has(d.id) ? '#22C55E' : '#E5E7EB'))
         .attr("stroke-width", d => (d.id === selectedNodeId || !blockedNodeIds.has(d.id)) ? 3 : 1.5)
@@ -124,7 +124,7 @@ export function renderGraph(
     node.append("text")
         .text(d => d.id)
         .classed("node-label-selected", d => d.id === selectedNodeId)
-        .attr("y", d => radiusScale(d.storyPoints) + 12)
+        .attr("y", d => radiusScale(d.storyPoints || 0) + 12)
         .attr("text-anchor", "middle")
         .style("font-size", "10px")
         .style("pointer-events", "none");

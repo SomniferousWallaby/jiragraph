@@ -232,12 +232,10 @@ app.post('/api/developers', async (req, res) => {
         }
 
         const devs = Object.values(devMap).filter(dev => dev.velocity > 0);
-
-        const devsToSend = isAdmin
-            ? devs  // If user is an admin, send the full data
-            : devs.map(({ velocity, ...dev }) => dev); // Non-admins don't get velocity info
-
-        res.json(devsToSend);
+        res.json({ 
+            developers: devs, 
+            isUserAdmin: isAdmin 
+        });
 
     } catch (error) {
         console.error("Server error:", error);
