@@ -4,30 +4,6 @@
 
 import { statusColors } from "./colors.js";
 
-export function updateIssueDetails(d, handleNodeSelect, JIRA_URL, issueDetailsPanel) {
-  if (!d) {
-        // Handle deselection
-        issueDetailsPanel.classList.add('hidden');
-        return null;
-    }
-    if(typeof handleNodeSelect === 'function' && d !== null) {
-        handleNodeSelect(d.id);
-    }
-    document.getElementById('detail-key').textContent = d.id;
-    document.getElementById('detail-summary').textContent = d.summary;
-    const statusBadge = document.getElementById('detail-status-badge');
-    statusBadge.textContent = d.status;
-    const color = statusColors[d.statusCategory] || statusColors.default;
-    const textClass = (parseInt(color.substring(1), 16) > 0xffffff / 2) ? 'text-gray-800' : 'text-white';
-    statusBadge.style.backgroundColor = color;
-    statusBadge.className = `px-2 py-1 text-xs font-semibold rounded-full ${textClass}`;
-    document.getElementById('detail-assignee').textContent = d.assignee;
-    document.getElementById('detail-points').textContent = d.storyPoints > 0 ? `${d.storyPoints} points` : 'Not pointed';
-    document.getElementById('detail-type').textContent = d.type;
-    document.getElementById('detail-link').href = `${JIRA_URL}/browse/${d.id}`;
-    issueDetailsPanel.classList.remove('hidden');
-}
-
 function drag(simulation) {
     function dragstarted(event, d) {
         if (!event.active) simulation.alphaTarget(0.01).restart();
@@ -50,41 +26,28 @@ export function renderGraph(
   graph,
   selectedNodeId, 
   graphContainer, 
-  onNodeSelect, 
+  onNodeSelect,
   simulation, 
   handleSimulation, 
   zoom, 
-  handleZoom,
-  JIRA_URL,
-  issueDetailsPanel
+  handleZoom
+
 ) {
-    let node; // Declare node selection here to be accessible in click handlers
+    let node; 
     const width = graphContainer.clientWidth;
     const height = graphContainer.clientHeight;
     const svg = d3.select("#graph-svg").attr("viewBox", [0, 0, width, height]);
     svg.selectAll("*").remove();
-
-    // Add a background rect to catch clicks for deselection
     svg.append("rect")
         .attr("width", width)
         .attr("height", height)
         .attr("fill", "none")
         .style("pointer-events", "all")
         .on("click", () => {
-            onNodeSelect(null); // Deselect
-            updateIssueDetails(null, onNodeSelect, JIRA_URL, issueDetailsPanel); // Deselect
-            if (node) {
-                node.selectAll("circle")
-                    .attr("stroke", n => n.id === selectedNodeId ? "#3B82F6" : (!blockedNodeIds.has(n.id) ? '#22C55E' : '#E5E7EB'))
-                    .attr("stroke-width", n => (n.id === selectedNodeId || !blockedNodeIds.has(n.id)) ? 3 : 1.5);
-
-                node.selectAll("text")
-                    .classed("node-label-selected", n => n.id === selectedNodeId);
-            }
+            onNodeSelect(null); 
         });
 
     const container = svg.append("g");
-
     const maxStoryPoints = d3.max(graph.nodes, d => d.storyPoints) || 1;
     const radiusScale = d3.scaleSqrt().domain([0, maxStoryPoints]).range([8, 25]);
 
@@ -112,9 +75,9 @@ export function renderGraph(
     const link = container.append("g").attr("class", "links").selectAll("line")
         .data(graph.links)
         .join("line")
-        .style("stroke", d => d.isBlocking ? "#EF4444" : "#9ca3af") // Use the flag here
+        .style("stroke", d => d.isBlocking ? "#EF4444" : "#9ca3af")
         .style("stroke-opacity", 0.8)
-        .attr("marker-end", d => d.isBlocking ? "url(#arrow-blocking)" : null); // And here
+        .attr("marker-end", d => d.isBlocking ? "url(#arrow-blocking)" : null);
 
     const linkLabelGroup = container.append("g").attr("class", "link-labels").selectAll("g")
         .data(graph.links)
@@ -139,7 +102,7 @@ export function renderGraph(
 
     const blockedNodeIds = new Set(
         graph.links
-            .filter(link => link.isBlocking) // Use the flag here
+            .filter(link => link.isBlocking)
             .map(link => link.target.id || link.target)
     );
 
@@ -152,20 +115,19 @@ export function renderGraph(
         .attr("stroke", d => d.id === selectedNodeId ? "#3B82F6" : (!blockedNodeIds.has(d.id) ? '#22C55E' : '#E5E7EB'))
         .attr("stroke-width", d => (d.id === selectedNodeId || !blockedNodeIds.has(d.id)) ? 3 : 1.5)
         .on("click", (event, d) => {
-            event.stopPropagation(); // Prevent background click from firing
+            event.stopPropagation();
             if (typeof onNodeSelect === 'function') {
                 onNodeSelect(d.id);
             }
-            updateIssueDetails(d, onNodeSelect, JIRA_URL, issueDetailsPanel);
         });
 
     node.append("text")
         .text(d => d.id)
         .classed("node-label-selected", d => d.id === selectedNodeId)
-        .attr("y", d => radiusScale(d.storyPoints) + 12) // Position below circle
+        .attr("y", d => radiusScale(d.storyPoints) + 12)
         .attr("text-anchor", "middle")
         .style("font-size", "10px")
-        .style("pointer-events", "none"); // Prevent text from capturing mouse events
+        .style("pointer-events", "none");
 
     simulation.on("tick", () => {
         link.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
