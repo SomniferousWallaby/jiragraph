@@ -5,6 +5,8 @@ import { setActiveView } from './state.js';
 import { fetchDataAndRender } from './api.js';
 
 // --- DOM Elements ---
+const adminControls = document.getElementById('admin-controls');
+const velocityToggle = document.getElementById('velocity-toggle');
 const visualizeBtn = document.getElementById('visualize-btn');
 const resetViewBtn = document.getElementById('reset-view-btn');
 const showGraphBtn = document.getElementById('show-graph-btn');
@@ -219,7 +221,9 @@ function renderDeveloperList(devList) {
 
     devListContainer.innerHTML = devList.map(dev => {
         const hasVelocity = dev.velocity !== undefined; 
-        const totalVeloText = hasVelocity ? `<span class="text-gray-500 font-normal">(${(dev.velocity / 4.3).toFixed(1)} total pts/wk)</span>` : '';
+        const showVelocity = hasVelocity && document.getElementById('velocity-toggle')?.checked;
+        const totalVeloText = showVelocity ? `(${(dev.velocity / 4.3).toFixed(1)} total pts/wk)` : '';
+        
         
         // This is the skill selection part, which may be hidden
         const skillSelectionHtml = useSkillBasedMode ? `
@@ -262,6 +266,15 @@ async function loadDevelopers() {
     savedDevStates = {};
     devs = await fetchDevelopers();
     devs.sort((a, b) => a.name.localeCompare(b.name));
+
+    const isAdmin = devs.length > 0 && devs[0].velocity !== undefined;
+    if (isAdmin) {
+        adminControls.classList.remove('hidden');
+        adminControls.classList.add('flex'); 
+    } else {
+        adminControls.classList.add('hidden');
+        adminControls.classList.remove('flex');
+    }
 
     renderDeveloperList(devs);
 }
@@ -473,4 +486,8 @@ showGanttBtn.addEventListener('click', () => {
 showEstimateBtn.addEventListener('click', () => {
     setActiveView('estimate', graphContainer, ganttContainer, estimateContainer, showGraphBtn, showGanttBtn, showEstimateBtn);
     renderEstimationView();
+});
+
+velocityToggle.addEventListener('change', () => {
+    renderDeveloperList(devs);
 });
