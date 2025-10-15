@@ -1,6 +1,5 @@
-// server.js
-
 // 1. Import dependencies
+import { adminEmails } from './adminUsers';
 const express = require('express');
 const fetch = require('node-fetch'); // For making HTTP requests in Node
 const cors = require('cors'); // To handle CORS for our own server if needed
@@ -11,7 +10,7 @@ const app = express();
 const PORT = 8123;
 
 // 2a. Admin users
-const ADMIN_EMAILS = ['thomas@arryved.com', 'otherEmails'];
+const ADMIN_EMAILS = adminEmails;
 
 // 3. Middleware
 app.use(express.json());
