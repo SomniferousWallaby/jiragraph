@@ -52,7 +52,7 @@ export async function fetchDataAndRender(JIRA_URL, EMAIL, API_TOKEN, EPIC_KEY,
         }
 
         const responseData = await response.json();
-        const { epic, nodes, links } = processJiraData(responseData.issues, responseData.storyPointFieldId, EPIC_KEY);
+        const { epic, nodes, links } = processJiraData(responseData.issues, responseData.storyPointFieldId, responseData.skillFieldId, EPIC_KEY);
 
         if (epic) {
             epicTitle.textContent = epic.id;
@@ -96,7 +96,7 @@ export async function fetchDataAndRender(JIRA_URL, EMAIL, API_TOKEN, EPIC_KEY,
  * Processes Jira issue links to correctly handle all link types
  * and add an `isBlocking` flag for use in both views.
  */
-function processJiraData(issues, storyPointFieldId, EPIC_KEY) {
+function processJiraData(issues, storyPointFieldId, skillFieldId, EPIC_KEY) {
     const epicKeys = Array.isArray(EPIC_KEY) ? EPIC_KEY : [EPIC_KEY];
     const epicIssues = issues.filter(issue => epicKeys.includes(issue.key));
     const childIssues = issues.filter(issue => !epicKeys.includes(issue.key));
@@ -108,7 +108,9 @@ function processJiraData(issues, storyPointFieldId, EPIC_KEY) {
         statusCategory: issue.fields.status.statusCategory.name,
         type: issue.fields.issuetype.name,
         assignee: issue.fields.assignee ? issue.fields.assignee.displayName : 'Unassigned',
-        storyPoints: (storyPointFieldId && issue.fields[storyPointFieldId]) ? issue.fields[storyPointFieldId] : 0,
+        storyPoints: (storyPointFieldId && issue.fields[storyPointFieldId] !== null) ? issue.fields[storyPointFieldId] : null,
+        skill: issue.fields[skillFieldId]?.value?.toLowerCase() || 'unskilled',
+
         epic: issue.fields.parent ? issue.fields.parent.key : (issue.fields['Epic Link'] || null)
     }));
 
@@ -121,7 +123,6 @@ function processJiraData(issues, storyPointFieldId, EPIC_KEY) {
                 let sourceId, targetId, linkType;
                 let isBlocking = false;
 
-                // Case 1: The current issue is the source of an outward link
                 if (link.outwardIssue) {
                     sourceId = issue.key;
                     targetId = link.outwardIssue.key;
@@ -130,25 +131,22 @@ function processJiraData(issues, storyPointFieldId, EPIC_KEY) {
                         isBlocking = true;
                     }
                 } 
-                // Case 2: The current issue is the target of an inward link
                 else if (link.inwardIssue) {
                     sourceId = link.inwardIssue.key;
                     targetId = issue.key;
-                    linkType = link.type.outward; // Always use the outward description for consistency
+                    linkType = link.type.outward;
                     if (link.type.inward.toLowerCase().trim() === 'is blocked by') {
                         isBlocking = true;
                     }
                 } else {
-                    return; // Skip if link is malformed
+                    return;
                 }
 
-                // Create a canonical key by sorting the IDs to handle duplicates
                 const canonicalKey = [sourceId, targetId].sort().join('--');
                 if (processedLinks.has(canonicalKey)) {
-                    return; // We've already processed this relationship from the other issue
+                    return;
                 }
 
-                // Ensure both linked issues are part of this epic's children.
                 if (!nodes.some(n => n.id === sourceId) || !nodes.some(n => n.id === targetId)) {
                     return;
                 }
