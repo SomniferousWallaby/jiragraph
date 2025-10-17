@@ -61,14 +61,12 @@ export function updateGanttSelection(selectedNodeId) {
     const ganttRowsContainer = document.getElementById('gantt-rows');
     if (!ganttRowsContainer) return;
 
-    // Loop through all rows to apply/remove styles
     ganttRowsContainer.querySelectorAll('[data-node-id]').forEach(row => {
         const isSelected = row.dataset.nodeId === selectedNodeId;
         
-        // Use classList.toggle for clean state management
-        row.classList.toggle('bg-indigo-100', isSelected); // Selected background color
-        row.classList.toggle('hover:bg-indigo-100', isSelected); // Selected hover color
-        row.classList.toggle('hover:bg-gray-100', !isSelected); // Default hover color
+        row.classList.toggle('bg-indigo-100', isSelected); 
+        row.classList.toggle('hover:bg-indigo-100', isSelected); 
+        row.classList.toggle('hover:bg-gray-100', !isSelected); 
     });
 }
 
@@ -81,18 +79,35 @@ export function renderGanttChart(
 
     const ganttHeaderContainer = document.getElementById('gantt-header');
     const ganttRowsContainer = document.getElementById('gantt-rows');
+    const filterCheckbox = document.getElementById('gantt-filter-completed');
+    
+    const newGanttRowsContainer = ganttRowsContainer.cloneNode(false);
+    ganttRowsContainer.parentNode.replaceChild(newGanttRowsContainer, ganttRowsContainer);
     ganttHeaderContainer.innerHTML = '';
-    ganttRowsContainer.innerHTML = '';
 
-    const { times: taskTimes, adj, inDegree } = calculateTaskTimes(data.nodes, data.links);
+    const filterIsActive = filterCheckbox.checked;
+    const nodesToRender = filterIsActive 
+        ? data.nodes.filter(n => n.statusCategory !== "Done")
+        : data.nodes;
+
+    const nodesToRenderIds = new Set(nodesToRender.map(n => n.id));
+    const linksToRender = data.links.filter(link => 
+        nodesToRenderIds.has(link.source.id || link.source) && 
+        nodesToRenderIds.has(link.target.id || link.target)
+    );
+
+
+    const { times: taskTimes, adj, inDegree } = calculateTaskTimes(nodesToRender, linksToRender);
+    
     let maxTime = 0;
     for (const task of taskTimes.values()) {
         if (task.end > maxTime) maxTime = task.end;
     }
     const scaleEnd = maxTime;
+
     const sortedNodes = [];
     const visited = new Set();
-    const nodeMap = new Map(data.nodes.map(n => [n.id, n]));
+    const nodeMap = new Map(nodesToRender.map(n => [n.id, n]));
 
     function dfs(nodeId) {
         if (visited.has(nodeId)) return;
@@ -105,17 +120,19 @@ export function renderGanttChart(
         }
     }
 
-    const rootNodes = data.nodes
+    const rootNodes = nodesToRender
         .filter(n => inDegree.get(n.id) === 0)
         .sort((a,b) => a.id.localeCompare(b.id, undefined, {numeric: true}));
+
     rootNodes.forEach(root => dfs(root.id));
-    data.nodes.forEach(node => {
+
+    nodesToRender.forEach(node => {
         if (!visited.has(node.id)) {
             dfs(node.id);
         }
     });
 
-    const epicKeys = [...new Set(data.nodes.map(n => n.epic).filter(Boolean))];
+    const epicKeys = [...new Set(nodesToRender.map(n => n.epic).filter(Boolean))];
     const epicColors = {};
     epicKeys.forEach((key, i) => {
         epicColors[key] = epicPalette[i % epicPalette.length];
@@ -128,20 +145,21 @@ export function renderGanttChart(
         const widthPercent = (times.duration / scaleEnd) * 100;
         return `
             <div data-node-id="${node.id}" class="flex items-center p-2 border-b border-gray-200 text-sm cursor-pointer hover:bg-gray-100 rounded-lg">
-                    <div class="w-1/3 truncate flex items-center" title="${node.summary}">
-                        ${node.epic ? `<a href="${JIRA_URL}/browse/${node.epic}" target="_blank" class="mr-2 px-2 py-1 rounded-full font-bold text-xs" style="background:${epicColors[node.epic]};color:#fff;">${node.epic}</a>` : ''}
-                        <span class="font-mono text-xs text-gray-500">${node.id}</span>
-                        <span class="ml-2">${node.summary}</span>
-                    </div>
-                    <div class="w-2/3 relative h-6 bg-gray-200 rounded">
-                        <div class="absolute h-6 rounded text-white text-xs flex items-center justify-center overflow-hidden" title="${node.storyPoints || 1} points" style="background-color: ${statusColors[node.statusCategory] || statusColors.default}; left: ${leftPercent}%; width: ${widthPercent}%;">
-                            <span class="px-1">${node.storyPoints || 'n/a'}</span>
-                        </div>
+                <div class="w-1/3 truncate flex items-center" title="${node.summary}">
+                    ${node.epic ? `<a href="${JIRA_URL}/browse/${node.epic}" target="_blank" class="mr-2 px-2 py-1 rounded-full font-bold text-xs" style="background:${epicColors[node.epic]};color:#fff;">${node.epic}</a>` : ''}
+                    <span class="font-mono text-xs text-gray-500">${node.id}</span>
+                    <span class="ml-2">${node.summary}</span>
+                </div>
+                <div class="w-2/3 relative h-6 bg-gray-200 rounded">
+                    <div class="absolute h-6 rounded text-white text-xs flex items-center justify-center overflow-hidden" title="${node.storyPoints || 1} points" style="background-color: ${statusColors[node.statusCategory] || statusColors.default}; left: ${leftPercent}%; width: ${widthPercent}%;">
+                        <span class="px-1">${node.storyPoints || 'n/a'}</span>
                     </div>
                 </div>
+            </div>
         `;
     }).join('');
-    ganttRowsContainer.innerHTML = ganttRowsHTML;
+    newGanttRowsContainer.innerHTML = ganttRowsHTML;
+
 
     let headerLevelsHTML = '';
     if (scaleEnd > 0) {
@@ -156,18 +174,19 @@ export function renderGanttChart(
     }
     ganttHeaderContainer.innerHTML = `<div class="flex items-center border-b-2 pb-2 mb-4"><div class="w-1/3 font-bold">Task</div><div class="w-2/3 relative h-1"><div class="absolute -top-4 left-0 text-xs text-gray-500">0</div>${headerLevelsHTML}</div></div>`;
 
-    ganttRowsContainer.querySelectorAll('[data-node-id]').forEach(row => {
-        row.addEventListener('click', () => {
-            const nodeId = row.dataset.nodeId;
-            const newSelectionId = (nodeId === selectedNodeId) ? null : nodeId;
-            if (typeof handleNodeSelect === 'function') {
-                handleNodeSelect(newSelectionId);
-            }
-        });
+    newGanttRowsContainer.addEventListener('click', (event) => {
+        const row = event.target.closest('[data-node-id]');
+        if (!row) return; 
+
+        const nodeId = row.dataset.nodeId;
+        const newSelectionId = (nodeId === selectedNodeId) ? null : nodeId;
+        if (typeof handleNodeSelect === 'function') {
+            handleNodeSelect(newSelectionId);
+        }
     });
 
     if (selectedNodeId) {
-        const selectedRow = ganttRowsContainer.querySelector(`[data-node-id="${selectedNodeId}"]`);
+        const selectedRow = newGanttRowsContainer.querySelector(`[data-node-id="${selectedNodeId}"]`);
         if (selectedRow) {
             selectedRow.classList.add('bg-indigo-100', 'hover:bg-indigo-100');
             selectedRow.classList.remove('hover:bg-gray-100');

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jiragraph</title>
+    <title>Epic Mapper</title>
     <link rel="icon" href="favicon.ico" type="image/x-icon">
     <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -17,11 +17,10 @@
     <div class="flex flex-col md:flex-row h-screen">
 
         <!-- ===== Left Panel: Configuration and Issue Details ===== -->
-        <div class="w-full md:w-96 bg-white border-r border-gray-200 p-6 flex flex-col space-y-6 overflow-y-auto">
-            <div>
-                <h1 class="text-2xl font-bold text-gray-900">Jiragraph</h1>
-                <p class="text-sm text-gray-500 mt-1">Map the dependencies of issues within an Epic.</p>
-            </div>
+        <div class="w-full md:w-96 bg-white border-r border-gray-200 p-6 flex flex-col space-y-6 overflow-y-auto h-full">
+        <header class="mb-6 flex items-center space-x-3"> <img src="/assets/logo.png" alt="Epic Mapper Logo" class="h-10 w-10 flex-shrink-0"> <div>
+                <h1 class="text-3xl font-bold text-gray-900">Epic Mapper</h1> <p class="text-sm text-gray-500">An interactive dependency visualizer and planning tool for Jira</p> </div>
+        </header>
 
             <!-- Configuration Form -->
             <div id="config-form" class="space-y-4">
@@ -57,7 +56,7 @@
             <div id="issue-details" class="hidden pt-6 border-t border-gray-200">
                 <h2 class="text-lg font-semibold text-gray-800">Issue Details</h2>
                 <div class="mt-4 space-y-3">
-                    <p><strong class="w-24 inline-block">Key:</strong> <span id="detail-key" class="font-mono"></span></p>
+                    <p><strong class="w-24 inline-block">Key:</strong> <a id="detail-key" class="font-mono text-indigo-600 hover:underline" target="_blank"></a></p>
                     <p><strong class="w-24 inline-block">Summary:</strong> <span id="detail-summary"></span></p>
                     <p><strong class="w-24 inline-block">Status:</strong> <span id="detail-status-badge" class="px-2 py-1 text-xs font-semibold rounded-full"></span></p>
                     <p><strong class="w-24 inline-block">Assignee:</strong> <span id="detail-assignee"></span></p>
@@ -92,7 +91,7 @@
                             Gantt View
                         </button>
                         <button id="show-estimate-btn" class="px-4 py-2 text-sm font-medium bg-white text-gray-900 border border-gray-200 rounded-r-lg hover:bg-gray-100">
-                            Estimate View
+                            Resource Planning
                         </button>
                     </div>
                 </div>
@@ -143,14 +142,23 @@
 
                 <!-- Gant Chart Container -->
                 <div id="gantt-container" class="hidden flex flex-col flex-1 p-4 min-h-0">
+                    <div id="gantt-controls" class="flex justify-end items-center mb-4 pr-2">
+                        <div class="flex items-center space-x-3">
+                            <label for="gantt-filter-completed" class="text-sm font-medium text-gray-900 cursor-pointer">Hide Completed Work</label>
+                            <div class="relative inline-flex items-center">
+                                <input type="checkbox" id="gantt-filter-completed" class="sr-only peer">
+                                <label for="gantt-filter-completed" class="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-2 peer-focus:ring-indigo-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600 cursor-pointer"></label>
+                            </div>
+                        </div>
+                    </div>
                     <div id="gantt-header"></div>
                     <div id="gantt-rows" class="flex-1 overflow-y-auto pb-22"></div>
                 </div>
 
                 <!-- Estimate Container -->
-                <div id="estimate-container" class="hidden flex-1 flex flex-col items-center justify-center p-8 space-y-6">
+                <div id="estimate-container" class="hidden flex-1 flex flex-col items-center p-8 space-y-6">
                     <div class="w-full max-w-2xl text-center">
-                        <h2 class="text-3xl font-bold text-gray-800">Project Estimation</h2>
+                        <h2 class="text-3xl font-bold text-gray-800">Resource Planning</h2>
                         <p class="text-gray-600 mt-2">Select developers from the list to calculate the estimated completion time based on last 30 days velocity.</p>
                     </div>
 

@@ -55,8 +55,24 @@ export async function fetchDataAndRender(JIRA_URL, EMAIL, API_TOKEN, EPIC_KEY,
         const { epic, nodes, links } = processJiraData(responseData.issues, responseData.storyPointFieldId, responseData.skillFieldId, EPIC_KEY);
 
         if (epic) {
-            epicTitle.textContent = epic.id;
-            epicSummary.textContent = epic.summary;
+            if (epic.epics) {
+                epicTitle.textContent = epic.epics.length > 1 ? 'Multiple Epics' : '';
+                const epicDetailsHTML = epic.epics.map(e => {
+                    return `
+                        <div>
+                            <a href="${JIRA_URL}/browse/${e.key}" target="_blank" class="text-indigo-600 hover:underline font-mono">${e.key}</a>:
+                            <span class="text-gray-600">${e.summary}</span>
+                        </div>
+                    `;
+                }).join('');
+                
+                epicSummary.innerHTML = epicDetailsHTML;
+
+            } else {
+                epicTitle.innerHTML = `<a href="${JIRA_URL}/browse/${epic.id}" target="_blank" class="text-indigo-600 hover:underline">${epic.id}</a>`;
+                epicSummary.textContent = epic.summary;
+            }
+
             epicHeader.classList.remove('hidden');
         }
 
@@ -168,8 +184,7 @@ function processJiraData(issues, storyPointFieldId, skillFieldId, EPIC_KEY) {
         epicData = { id: epicIssues[0].key, summary: epicIssues[0].fields.summary };
     } else if (epicIssues.length > 1) {
         epicData = {
-            id: 'Multiple Epics',
-            summary: epicIssues.map(e => e.key).join(', ')
+            epics: epicIssues.map(e => ({ key: e.key, summary: e.fields.summary })) 
         };
     }
 
