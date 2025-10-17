@@ -29,6 +29,7 @@ const estimateOutput = document.getElementById('estimate-output');
 const devListContainer = document.getElementById('developer-list-container');
 const refreshDevsBtn = document.getElementById('refresh-devs-btn');
 const skillToggle = document.getElementById('skill-toggle');
+const ganttFilterCheckbox = document.getElementById('gantt-filter-completed');
 
 // --- Global Variables ---
 let JIRA_URL, EMAIL, API_TOKEN, EPIC_KEY;
@@ -153,6 +154,7 @@ function updateIssueDetailsPanel(nodeId, graphData, jiraUrl) {
     }
 
     detailKey.textContent = node.id;
+    detailKey.href = `${jiraUrl}/browse/${node.id}`;
     detailSummary.textContent = node.summary;
     detailAssignee.textContent = node.assignee;
     detailPoints.textContent = node.storyPoints || '0';
@@ -473,6 +475,16 @@ window.addEventListener('resize', () => {
 showGraphBtn.addEventListener('click', () => {
     setActiveView('graph', graphContainer, ganttContainer, estimateContainer, showGraphBtn, showGanttBtn, showEstimateBtn);
     if (currentGraphData) {
+        renderGraph(
+            currentGraphData,
+            selectedNodeId,
+            graphContainer,
+            handleNodeSelect,
+            simulation,
+            handleSimulation,
+            zoom,
+            handleZoom
+        );
         updateGraphSelection(currentGraphData, selectedNodeId);
     }
 });
@@ -494,4 +506,15 @@ showEstimateBtn.addEventListener('click', () => {
 
 velocityToggle.addEventListener('change', () => {
     persistAndRerenderDevList();
+});
+
+ganttFilterCheckbox.addEventListener('change', () => {
+    if (currentGraphData && !ganttContainer.classList.contains('hidden')) {
+        renderGanttChart(
+            currentGraphData,
+            JIRA_URL,
+            handleNodeSelect,
+            selectedNodeId
+        );
+    }
 });
